@@ -1,0 +1,328 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  // Note: On Windows, `prisma db push` may fail with TLS errors for Neon.
+  // Use `node scripts/push-schema.mjs` as a workaround.
+}
+
+enum ChannelSource {
+  whatsapp
+  web_chat
+  contact_form
+  email
+}
+
+enum LeadStatus {
+  new
+  qualifying
+  qualified
+  disqualified
+  brief_ready
+  converted
+}
+
+enum Complexity {
+  Low
+  Medium
+  High
+}
+
+enum MessageSender {
+  client
+  agent
+  system
+}
+
+enum AutomationType {
+  web
+  whatsapp
+  email
+}
+
+enum UserRole {
+  company_user
+  company_admin
+  platform_admin
+}
+
+enum ConnectionStatus {
+  not_connected
+  pending
+  connected
+  disconnected
+  error
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  logo      String?
+  industry  String?
+  teamSize  String?
+  website   String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  country   String?
+  timezone  String?
+  onboardingCompleted   Boolean   @default(false)
+  onboardingStep        Int       @default(1)
+  onboardingCompletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                 User[]
+  leads                 Lead[]
+  automationAccess      AutomationAccess[]
+  automationConnections AutomationConnection[]
+  quotaAuditLogs        AutomationQuotaAuditLog[]
+  aiPermission          CompanyAiPermission?
+  knowledge             CompanyKnowledge[]
+  aiSuggestions         CompanyAiSuggestion[]
+  communicationSettings CompanyCommunicationSettings?
+  businessHours         BusinessHours?
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(company_admin)
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([email])
+}
+
+model AutomationConnection {
+  id             String           @id @default(cuid())
+  companyId      String
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automationType AutomationType
+  status         ConnectionStatus @default(not_connected)
+  provider       String?
+  externalId     String?
+  displayName    String?
+  metadata       Json?
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([companyId, automationType])
+  @@index([companyId])
+  @@index([status])
+}
+
+model AutomationAccess {
+  id               String         @id @default(cuid())
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automationType   AutomationType
+  enabled          Boolean        @default(false)
+  activatedAt      DateTime?
+  expiresAt        DateTime?
+
+  // Quota & Auto-lock fields
+  monthlyLimit     Int            @default(100)
+  usedCredits      Int            @default(0)
+  reservedCredits  Int            @default(0)
+  quotaLocked      Boolean        @default(false)
+  adminDisabled    Boolean        @default(false)
+  quotaPeriodStart DateTime       @default(now())
+  nextResetAt      DateTime?
+  lastResetAt      DateTime?
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([companyId, automationType])
+  @@index([companyId])
+}
+
+model AutomationQuotaAuditLog {
+  id             String         @id @default(cuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  automationType AutomationType @default(email)
+  action         String
+  details        Json?
+  createdAt      DateTime       @default(now())
+
+  @@index([companyId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Lead {
+  id                 String        @id @default(cuid())
+  companyId          String
+  company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientName         String
+  companyName        String
+  email              String
+  phone              String
+  channel            ChannelSource @default(web_chat)
+  status             LeadStatus    @default(new)
+  qualificationScore Int           @default(0)
+  estimatedBudget    String?
+  requestedTimeline  String?
+  projectType        String?
+  assignedManager    String?
+  notes              String?
+  lastActive         DateTime      @default(now())
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  projectBrief ProjectBrief?
+  chatMessages ChatMessage[]
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model ProjectBrief {
+  id                    String   @id @default(cuid())
+  leadId                String   @unique
+  lead                  Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title                 String
+  summary               String
+  projectType           String
+  targetAudience        String
+  requiredTechStack     String[]
+  budgetRange           String
+  estimatedDuration     String
+  keyRisks              String[]
+  rawConversationLength Int      @default(0)
+  structuredJson        Json
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  features ProjectFeature[]
+
+  @@index([leadId])
+}
+
+model ProjectFeature {
+  id          String       @id @default(cuid())
+  briefId     String
+  brief       ProjectBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  complexity  Complexity   @default(Medium)
+  createdAt   DateTime     @default(now())
+
+  @@index([briefId])
+}
+
+model ChatMessage {
+  id                    String        @id @default(cuid())
+  leadId                String
+  lead                  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sender                MessageSender
+  text                  String
+  options               String[]
+  extractedDataSnapshot Json?
+  createdAt             DateTime      @default(now())
+
+  @@index([leadId])
+}
+
+model CompanyAiPermission {
+  id                            String   @id @default(cuid())
+  companyId                     String   @unique
+  company                       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  autonomyMode                  String   @default("LIMITED_ACCESS")
+  outboundPaused                Boolean  @default(false)
+  autoReplyGeneralInfo          Boolean  @default(true)
+  autoReplyServices             Boolean  @default(true)
+  autoReplyPartnerships         Boolean  @default(false)
+  autoReplyPricing              Boolean  @default(false)
+  autoReplyDiscounts            Boolean  @default(false)
+  autoReplyCommission           Boolean  @default(false)
+  autoReplyContracts            Boolean  @default(false)
+  autoReplyRefunds              Boolean  @default(false)
+  autoReplyDeadlines            Boolean  @default(false)
+  autoReplySLAs                 Boolean  @default(false)
+  customRestrictedKeywords      String[] @default([])
+  customHoldingResponseTemplate String?
+  topicPolicies                 Json?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model CompanyKnowledge {
+  id         String    @id @default(cuid())
+  companyId  String
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category   String    @default("company")
+  title      String
+  content    String    @db.Text
+  verified   Boolean   @default(false)
+  status     String    @default("PENDING_REVIEW")
+  source     String    @default("COMPANY")
+  verifiedAt DateTime?
+  verifiedBy String?
+  enabled    Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([category])
+  @@index([status])
+}
+
+model CompanyAiSuggestion {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  suggestionText    String   @db.Text
+  suggestedCategory String
+  sourceSnippet     String   @db.Text
+  detectedAt        DateTime @default(now())
+  status            String   @default("PENDING")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+}
+
+model CompanyCommunicationSettings {
+  id               String   @id @default(cuid())
+  companyId        String   @unique
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tone             String   @default("professional")
+  responseDelay    String   @default("immediate")
+  signature        String?  @db.Text
+  signatureEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyId])
+}
+
+model BusinessHours {
+  id        String   @id @default(cuid())
+  companyId String   @unique
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  timezone  String?
+  schedule  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+}
