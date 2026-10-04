@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "@neondatabase/serverless": "^1.1.0",
+    "@neondatabase/serverless": "^0.10.4",
     "@prisma/adapter-neon": "^6.4.1",
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^3.0.3",
