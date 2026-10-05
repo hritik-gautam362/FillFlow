@@ -3,6 +3,8 @@ import { CompanyContext } from './types';
 import { StructuredConversationContext } from './conversationMemory';
 import { validateCustomerResponse, ResponseValidationResult } from './responseValidator';
 import { parseCompanyInstruction } from './companyInstructionParser';
+import { CompanyKnowledgeItem } from './permissionTypes';
+import { sanitizeCommercialClaimsInDraft } from './commercialClaimValidator';
 
 export interface GenerateDraftVariationsInput {
   messageText: string;
@@ -11,6 +13,16 @@ export interface GenerateDraftVariationsInput {
   structuredContext?: StructuredConversationContext;
   restrictedTopics?: string[];
   intent?: string;
+  companyInstruction?: string;
+  companyKnowledge?: CompanyKnowledgeItem[];
+  updatedOverrides?: Array<
+    | string
+    | {
+        field: string;
+        currentValue: string;
+        previousValue?: string;
+      }
+  >;
 }
 
 export interface GeneratedVariationsResult {
@@ -39,6 +51,7 @@ export function generateDraftVariations(
     companyContext,
     structuredContext,
     restrictedTopics = [],
+    intent,
   } = input;
 
   const companyName = companyContext?.name || 'Evores';
@@ -175,6 +188,48 @@ export function generateDraftVariations(
       `Best regards,\n${companyName}`;
   }
   // ---------------------------------------------------------------------------
+  // 4B. PRICING INQUIRY SCENARIO (BUG 1 FIX)
+  // When a topic is APPROVAL or customer asks about pricing:
+  // AI may understand request and generate drafts, but MUST NOT invent pricing, discounts,
+  // commission, revenue share, refunds, payment terms, delivery commitments, SLA commitments, or guarantees.
+  // A commercial value may only appear if it comes from verified knowledge or explicit company instruction.
+  // ---------------------------------------------------------------------------
+  else if (
+    restrictedTopics.includes('pricing') ||
+    intent === 'pricing_request' ||
+    /\b(?:what\s+(?:is|are|will\s+be)\s+(?:the\s+|your\s+)?pricing|share\s+(?:your\s+)?pricing|pricing\s+for|cost\s+(?:of|for)|how\s+much\s+(?:does|would|for))\b/i.test(lower)
+  ) {
+    const hasVerifiedPricing =
+      Boolean(companyContext?.pricingPolicy && /\d/.test(companyContext.pricingPolicy)) ||
+      (input.companyKnowledge || []).some((k) => (k.verified || k.status === 'VERIFIED') && /\d/.test(k.content)) ||
+      Boolean(input.companyInstruction && /\d/.test(input.companyInstruction));
+
+    if (hasVerifiedPricing && baseDraft && baseDraft.trim().length > 0) {
+      draftProfessional = baseDraft.startsWith('Hi') ? baseDraft : `Hi,\n\n${baseDraft}\n\nBest regards,\n${companyName}`;
+      draftRelationship = `Hi,\n\nThanks so much for reaching out to ${companyName}! ${baseDraft}\n\nBest regards,\n${companyName}`;
+      draftConcise = `Hi,\n\nThanks for inquiring about our pricing. ${baseDraft}\n\nBest regards,\n${companyName}`;
+    } else {
+      draftProfessional =
+        `Hi,\n\n` +
+        `Thank you for reaching out regarding pricing for developing your website. We'd be happy to prepare a detailed quotation for you. ` +
+        `Could you share any additional requirements or your preferred timeline so we can provide an accurate estimate?\n\n` +
+        `Best regards,\n${companyName}`;
+
+      draftRelationship =
+        `Hi,\n\n` +
+        `Thanks so much for reaching out to ${companyName}! We would love the opportunity to work with you on your website. ` +
+        `We'd be delighted to prepare a customized quotation for you. Could you share any additional requirements or your preferred timeline ` +
+        `so our team can provide an accurate estimate tailored to your project?\n\n` +
+        `Best regards,\n${companyName}`;
+
+      draftConcise =
+        `Hi,\n\n` +
+        `Thanks for inquiring about our pricing. We would be happy to prepare a detailed quotation for you. ` +
+        `Could you share any additional requirements or your preferred timeline so we can provide an accurate estimate?\n\n` +
+        `Best regards,\n${companyName}`;
+    }
+  }
+  // ---------------------------------------------------------------------------
   // 5. DEFAULT BASE DRAFT DERIVATION
   // ---------------------------------------------------------------------------
   else {
@@ -200,12 +255,38 @@ export function generateDraftVariations(
       `Best regards,\n${companyName}`;
   }
 
-  // Validate all 3 variations using the existing response validator
+  // Authoritative Commercial Claims Sanitization:
+  // Inspect all three generated drafts BEFORE they are presented as sendable drafts.
+  // Any unsupported price, percentage, discount, commission, delivery timeline, SLA, or guarantee
+  // is sanitized into consultative wording without fabricating replacement numbers.
+  const authContext = {
+    companyContext,
+    companyKnowledge: input.companyKnowledge,
+    companyInstruction: input.companyInstruction,
+    updatedOverrides:
+      input.updatedOverrides ||
+      structuredContext?.currentTurnRequirements?.map((r) => {
+        if (typeof r === 'string') return r;
+        const rec = r as unknown as Record<string, unknown>;
+        const label = (rec.field as string) || (rec.topic as string) || (rec.type as string);
+        return `${label}: ${rec.currentValue}`;
+      }) ||
+      [],
+  };
+
+  draftProfessional = sanitizeCommercialClaimsInDraft(draftProfessional, messageText, authContext);
+  draftRelationship = sanitizeCommercialClaimsInDraft(draftRelationship, messageText, authContext);
+  draftConcise = sanitizeCommercialClaimsInDraft(draftConcise, messageText, authContext);
+
+  // Validate all 3 variations using the response validator with authoritative context
   const validateVariation = (content: string, style: DraftVariationStyle): DraftVariation => {
     const valResult: ResponseValidationResult = validateCustomerResponse({
       reply: content,
       clientMessage: messageText,
       companyContext,
+      companyInstruction: input.companyInstruction,
+      companyKnowledge: input.companyKnowledge,
+      updatedOverrides: input.updatedOverrides,
     });
 
     let label = 'Professional';
@@ -636,8 +717,8 @@ export function generateDraftsFromCompanyInstruction(
     (constraint.topic === 'revenue_share' || constraint.topic === 'commission')
   ) {
     const termStr = constraint.subjectTerm || (constraint.topic === 'revenue_share' ? 'the proposed revenue-share' : 'the proposed commission');
-    const discussClause = (constraint.discussFirst || /\b(?:discuss|understand)\b/i.test(instLower))
-      ? 'We would like to discuss the commercial terms and understand your expectations before agreeing to specific terms.'
+    const discussClause = (constraint.discussFirst || /\b(?:discuss|understand|structure)\b/i.test(instLower))
+      ? 'Commercial partnership terms are evaluated internally with our team as we discuss the collaboration structure and next steps.'
       : 'We would welcome the opportunity to discuss the collaboration structure and next steps.';
 
     draftProfessional =

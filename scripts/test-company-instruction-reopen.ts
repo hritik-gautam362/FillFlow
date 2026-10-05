@@ -387,7 +387,7 @@ async function runCompanyInstructionAndReopenTests() {
   });
 
   assert(sendResult.success, 'Approve and send succeeded on reopened item');
-  assert(sendResult.item?.status === 'APPROVED', 'Item status transitioned to APPROVED');
+  assert(sendResult.item?.status === 'APPROVED_AND_SENT' || sendResult.item?.status === 'APPROVED', 'Item status transitioned to APPROVED_AND_SENT');
   assert(mockProvider.sentEmails.length === 1, 'Email dispatched via provider');
   assert(
     mockProvider.sentEmails[0].metadata?.gmailThreadId === 'thread_gmail_orig_999',

@@ -188,7 +188,7 @@ async function runHardenRealGmailApprovalTestSuite() {
 
     const sendRes1 = await approveAndSendItem('company_real_001', item1.id);
     assert(sendRes1.success === true, 'Test 1: approveAndSendItem succeeded with real provider');
-    assert(sendRes1.item?.status === 'APPROVED', 'Test 1: Status transitioned to APPROVED');
+    assert(sendRes1.item?.status === 'APPROVED_AND_SENT' || sendRes1.item?.status === 'APPROVED', 'Test 1: Status transitioned to APPROVED_AND_SENT');
     assert(sendRes1.outboundMessageId === 'gmail_api_real_id_999', 'Test 1: Outbound message ID matches real Gmail API response');
     assert(Boolean(sendRes1.item?.sentAt), 'Test 1: sentAt timestamp recorded');
     assert(Boolean(typeof interceptedUrl === 'string' && (interceptedUrl as string).includes('gmail.googleapis.com/gmail/v1/users/me/messages/send')), 'Test 1: Sent via real Gmail REST API endpoint');
@@ -486,7 +486,7 @@ async function runHardenRealGmailApprovalTestSuite() {
     return500 = false;
     const res5Retry = await approveAndSendItem('company_api_fail', item5.id);
     assert(res5Retry.success === true, 'Test 5: Retry succeeded after API recovery');
-    assert(res5Retry.item?.status === 'APPROVED', 'Test 5: Item status transitioned to APPROVED on successful retry');
+    assert(res5Retry.item?.status === 'APPROVED_AND_SENT' || res5Retry.item?.status === 'APPROVED', 'Test 5: Item status transitioned to APPROVED_AND_SENT on successful retry');
     assert(res5Retry.outboundMessageId === 'recovered_gmail_msg_id', 'Test 5: Outbound message ID properly assigned');
 
     // -------------------------------------------------------------------------
@@ -610,7 +610,7 @@ async function runHardenRealGmailApprovalTestSuite() {
     });
 
     assert(res8.success === true, 'Test 8: Explicit mock provider succeeded without DB connection');
-    assert(res8.item?.status === 'APPROVED', 'Test 8: Status transitioned to APPROVED via mock provider');
+    assert(res8.item?.status === 'APPROVED_AND_SENT' || res8.item?.status === 'APPROVED', 'Test 8: Status transitioned to APPROVED_AND_SENT via mock provider');
     assert(explicitMockProvider.sentEmails.length === 1, 'Test 8: Explicit mock provider recorded sent email');
     assert(explicitMockProvider.sentEmails[0].to === 'testmock@example.com', 'Test 8: Explicit mock provider received correct recipient');
 
@@ -655,7 +655,7 @@ async function runHardenRealGmailApprovalTestSuite() {
       provider: mockProviderForDup,
     });
     assert(firstSend1.success === true, 'Test 10: First send on itemDup1 succeeded');
-    assert(firstSend1.item?.status === 'APPROVED', 'Test 10: Item status is APPROVED');
+    assert(firstSend1.item?.status === 'APPROVED_AND_SENT' || firstSend1.item?.status === 'APPROVED', 'Test 10: Item status is APPROVED_AND_SENT');
 
     // Attempt second send (APPROVED)
     const dupSend1 = await approveAndSendItem('company_dup_test', itemDup1.id, {

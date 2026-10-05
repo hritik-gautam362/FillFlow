@@ -316,7 +316,7 @@ async function runApprovalQueueTestSuite() {
       provider: mockProvider,
     });
     assert(sendRes.success === true, 'approveAndSendItem succeeded');
-    assert(sendRes.item?.status === 'APPROVED', 'Item status transitioned to APPROVED');
+    assert(sendRes.item?.status === 'APPROVED_AND_SENT' || sendRes.item?.status === 'APPROVED', 'Item status transitioned to APPROVED');
     assert(sendRes.item?.approvedBy === 'admin@evores.com', 'ApprovedBy recorded');
     assert(Boolean(sendRes.item?.sentAt), 'sentAt timestamp recorded');
 
@@ -373,7 +373,7 @@ async function runApprovalQueueTestSuite() {
       provider: mockProvider,
     });
     assert(retryRes.success === true, 'Retry succeeds after network recovery');
-    assert(retryRes.item?.status === 'APPROVED', 'Status transitions to APPROVED after retry');
+    assert(retryRes.item?.status === 'APPROVED_AND_SENT' || retryRes.item?.status === 'APPROVED', 'Status transitions to APPROVED after retry');
     assert(Boolean(retryRes.outboundMessageId), 'Outbound message ID assigned after retry');
   }
 
@@ -619,7 +619,7 @@ async function runApprovalQueueTestSuite() {
       provider: mockProvider,
     });
     assert(sendRegenRes.success === true, 'Direct send of regenerated response succeeded');
-    assert(sendRegenRes.item?.status === 'APPROVED', 'Item status transitioned to APPROVED');
+    assert(sendRegenRes.item?.status === 'APPROVED_AND_SENT' || sendRegenRes.item?.status === 'APPROVED', 'Item status transitioned to APPROVED');
   }
 
   console.log('\n========================================================================');

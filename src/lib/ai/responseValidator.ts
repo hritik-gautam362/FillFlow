@@ -1,6 +1,8 @@
 import { ExtractedRequirements, CompanyContext } from './types';
 import { detectPlaceholderHallucinations } from './placeholderDetector';
 import { validateDraftAgainstCompanyInstruction } from './companyInstructionParser';
+import { CompanyKnowledgeItem } from './permissionTypes';
+import { isValueInAuthoritativeSources } from './commercialClaimValidator';
 
 export interface ResponseValidationResult {
   isValid: boolean;
@@ -102,8 +104,29 @@ export function validateCustomerResponse(params: {
   subject?: string;
   companyContext?: CompanyContext;
   companyInstruction?: string;
+  companyKnowledge?: CompanyKnowledgeItem[];
+  updatedOverrides?: Array<
+    | string
+    | {
+        field: string;
+        currentValue: string;
+        previousValue?: string;
+      }
+  >;
 }): ResponseValidationResult {
-  const { reply, clientMessage, history = [], knownRequirements, requiresReply, intent, subject, companyContext, companyInstruction } = params;
+  const {
+    reply,
+    clientMessage,
+    history = [],
+    knownRequirements,
+    requiresReply,
+    intent,
+    subject,
+    companyContext,
+    companyInstruction,
+    companyKnowledge,
+    updatedOverrides,
+  } = params;
   const issues: string[] = [];
 
   // If no reply is expected (e.g. courtesy closing)
@@ -384,32 +407,43 @@ export function validateCustomerResponse(params: {
     }
   }
 
-  // 4. Fabricated Price Detection
-  // If the client asks about cost/pricing, but the AI unilaterally quotes an exact number without client having stated it
+  // 4. Fabricated / Unsupported Commercial Price Detection
+  // Commercial values may ONLY appear if backed by verified company knowledge or explicit current company instruction.
+  // Customer statements and previous AI responses NEVER establish company policy.
   let hasFabricatedPrice = false;
-  const clientStatedPrice =
-    PRICE_AMOUNT_PATTERN.test(lowerClientMsg) ||
-    Boolean(knownRequirements?.budget && PRICE_AMOUNT_PATTERN.test(knownRequirements.budget));
+  const priceMatches = trimmedReply.match(PRICE_AMOUNT_PATTERN);
+  if (priceMatches) {
+    const rawPriceMatch = priceMatches[0];
+    const isSupportedByAuthority = isValueInAuthoritativeSources(rawPriceMatch, {
+      companyContext,
+      companyKnowledge,
+      companyInstruction,
+      updatedOverrides,
+    });
 
-  if (clientAskedPrice && !clientStatedPrice) {
-    if (PRICE_AMOUNT_PATTERN.test(trimmedReply)) {
+    if (!isSupportedByAuthority) {
       hasFabricatedPrice = true;
-      issues.push('Fabricated price figure detected when client asked for price quotation.');
+      if (clientAskedPrice) {
+        issues.push('Fabricated price figure detected when client asked for price quotation.');
+      } else {
+        issues.push(
+          `Send blocked: Unsupported commercial price claim: "${rawPriceMatch}". Customer statements and unverified drafts cannot establish company policy.`
+        );
+      }
     }
   }
 
   // 5. Fabricated Timeline Promise Detection
   let hasFabricatedTimeline = false;
-  const clientAskedTimeline =
-    /\b(how long|what is the timeline|when will (?:it|this|the project|the app) be (?:ready|done|launched|completed)|delivery (?:time|timeline|date)|delivery duration|turnaround time|timeline|schedule)\b/i.test(
-      lowerClientMsg
-    );
-
-  const clientStatedTimeline =
-    Boolean(knownRequirements?.timeline && knownRequirements.timeline.trim().length > 0);
-
-  if (clientAskedTimeline && !clientStatedTimeline) {
-    if (TIMELINE_PROMISE_PATTERN.test(trimmedReply)) {
+  const timelineMatches = trimmedReply.match(TIMELINE_PROMISE_PATTERN);
+  if (timelineMatches) {
+    const isTimelineSupported = isValueInAuthoritativeSources(timelineMatches[0], {
+      companyContext,
+      companyKnowledge,
+      companyInstruction,
+      updatedOverrides,
+    });
+    if (!isTimelineSupported) {
       hasFabricatedTimeline = true;
       issues.push('Fabricated specific timeline duration promised without client requirements confirmed.');
     }

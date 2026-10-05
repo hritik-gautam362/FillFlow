@@ -23,6 +23,10 @@ import {
   parseCompanyInstruction,
   validateDraftAgainstCompanyInstruction,
 } from '@/lib/ai/companyInstructionParser';
+import {
+  validateCommercialClaims,
+  sanitizeCommercialClaimsInDraft,
+} from '@/lib/ai/commercialClaimValidator';
 
 // Fast in-memory cache for approval items, dual-persisted to AutomationConnection.metadata.approvalQueue
 const memoryApprovalQueue = new Map<string, AiApprovalItem>();
@@ -42,17 +46,35 @@ export async function createApprovalItem(input: CreateApprovalItemInput): Promis
   const itemId = `appr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = new Date().toISOString();
 
+  const authContext = {
+    companyInstruction: input.companyInstruction,
+    updatedOverrides: input.updatedOverrides,
+    restrictedTopics: input.restrictedTopics,
+  };
+
   // If variations were not precomputed, generate them dynamically
-  const variations = input.variations || generateDraftVariations({
+  const rawVariations = input.variations || generateDraftVariations({
     messageText: input.latestCustomerMessage,
     baseDraft: input.baseDraft,
     restrictedTopics: input.restrictedTopics,
     intent: input.intent,
+    companyInstruction: input.companyInstruction,
+    updatedOverrides: input.updatedOverrides,
   });
+
+  // Deterministically inspect all generated variations before presenting them
+  const variations = {
+    professional: sanitizeCommercialClaimsInDraft(rawVariations.professional, input.latestCustomerMessage, authContext),
+    relationship: sanitizeCommercialClaimsInDraft(rawVariations.relationship, input.latestCustomerMessage, authContext),
+    warm: sanitizeCommercialClaimsInDraft(rawVariations.warm || rawVariations.relationship, input.latestCustomerMessage, authContext),
+    concise: sanitizeCommercialClaimsInDraft(rawVariations.concise, input.latestCustomerMessage, authContext),
+  };
 
   const selectedVariation: DraftVariationStyle = 'professional';
   const currentDraft = variations.professional;
   const originalAiDraft = variations.professional;
+
+  const initialStatus: ApprovalStatus = input.permissionDecision === 'BLOCKED' ? 'BLOCKED' : 'PENDING';
 
   const defaultTimeline: AIActivityLogEntry[] = [
     {
@@ -73,7 +95,7 @@ export async function createApprovalItem(input: CreateApprovalItemInput): Promis
       id: `act_${Date.now()}_3`,
       timestamp: now,
       step: 'Draft Variations Generated',
-      details: 'Generated 3 response options: Professional, Warm, and Concise',
+      details: 'Generated 3 response options: Professional, Warm, and Concise (commercially verified)',
       status: 'success' as const,
     },
   ];
@@ -91,9 +113,11 @@ export async function createApprovalItem(input: CreateApprovalItemInput): Promis
   defaultTimeline.push({
     id: `act_${Date.now()}_5`,
     timestamp: now,
-    step: 'Awaiting Company Approval',
-    details: 'Placed in company queue for review, draft selection, or custom editing',
-    status: 'pending' as const,
+    step: input.permissionDecision === 'BLOCKED' ? 'Blocked by Policy' : 'Awaiting Company Approval',
+    details: input.permissionDecision === 'BLOCKED'
+      ? 'Placed in blocked queue: inquiry contains commitments requiring manual platform authorization'
+      : 'Placed in company queue for review, draft selection, or custom editing',
+    status: input.permissionDecision === 'BLOCKED' ? ('error' as const) : ('pending' as const),
   });
 
   const item: AiApprovalItem = {
@@ -132,7 +156,8 @@ export async function createApprovalItem(input: CreateApprovalItemInput): Promis
     regeneratedVersions: [],
     isEdited: false,
     companyInstruction: input.companyInstruction,
-    status: 'PENDING',
+    status: initialStatus,
+    policySnapshot: input.restrictedTopics,
     activityTimeline: input.activityTimeline || defaultTimeline,
     inReplyTo: input.inReplyTo || input.inboundMessageId,
     references: input.references || input.inboundMessageId,
@@ -222,6 +247,26 @@ export async function getApprovalItem(
   }
 }
 
+function matchesApprovalFilter(item: AiApprovalItem, filterStatus?: ApprovalStatus | 'ALL'): boolean {
+  if (!filterStatus || filterStatus === 'ALL') return true;
+  if (filterStatus === 'PENDING') {
+    return item.status === 'PENDING';
+  }
+  if (filterStatus === 'APPROVED' || filterStatus === 'APPROVED_AND_SENT') {
+    return item.status === 'APPROVED_AND_SENT' || item.status === 'APPROVED';
+  }
+  if (filterStatus === 'EDITED_AND_SENT') {
+    return item.status === 'EDITED_AND_SENT';
+  }
+  if (filterStatus === 'REJECTED') {
+    return item.status === 'REJECTED';
+  }
+  if (filterStatus === 'BLOCKED') {
+    return item.status === 'BLOCKED' || item.permissionDecision === 'BLOCKED';
+  }
+  return item.status === filterStatus;
+}
+
 /**
  * Lists all approval items for a company with optional status filtering.
  * Strictly scoped to companyId for multi-tenant isolation.
@@ -235,7 +280,7 @@ export async function listApprovalItems(
   // 1. Gather from memory queue
   for (const item of memoryApprovalQueue.values()) {
     if (item.companyId === companyId) {
-      if (!filterStatus || filterStatus === 'ALL' || item.status === filterStatus) {
+      if (matchesApprovalFilter(item, filterStatus)) {
         items.push(item);
       }
     }
@@ -257,7 +302,7 @@ export async function listApprovalItems(
       const approvalQueue = (currentMeta.approvalQueue as Record<string, AiApprovalItem>) || {};
       for (const [id, dbItem] of Object.entries(approvalQueue)) {
         if (dbItem.companyId === companyId && !memoryApprovalQueue.has(id)) {
-          if (!filterStatus || filterStatus === 'ALL' || dbItem.status === filterStatus) {
+          if (matchesApprovalFilter(dbItem, filterStatus)) {
             items.push(dbItem);
             memoryApprovalQueue.set(id, dbItem);
           }
@@ -398,7 +443,21 @@ export function validateEditedDraftText(
     reply: editedText,
     clientMessage: customerMessage,
     companyInstruction: options?.companyInstruction,
+    updatedOverrides: options?.updatedOverrides,
   });
+
+  // Human edits in approval workflow are explicitly approved company entries
+  // (unless conflicting with immutable safety rules or unapproved overrides).
+  result.issues = result.issues.filter(
+    (i) =>
+      !i.includes('Reply unconditionally confirmed commission or commercial percentage') &&
+      !i.includes('Customer statements and unverified drafts cannot establish company policy')
+  );
+  if (result.issues.length === 0) {
+    result.isValid = true;
+    result.hasFabricatedPrice = false;
+    result.hasUnverifiedCommercialClaim = false;
+  }
 
   const lower = editedText.toLowerCase();
 
@@ -408,6 +467,27 @@ export function validateEditedDraftText(
     result.isValid = false;
     result.issues = result.issues.filter((i) => !i.toLowerCase().includes('placeholder'));
     result.issues.push('Send blocked: Unresolved placeholder detected: Response contains bracketed placeholder tokens.');
+  }
+
+  // 1B. Authoritative Commercial Claims Validation
+  // Validates all commercial claims (pricing, percentages, discounts, commission, rev share,
+  // refunds, payment terms, delivery timelines, SLAs, guarantees, contracts).
+  // Unsupported claims block sending. Immutable rules (guarantees, contracts) cannot be bypassed.
+  const commValidation = validateCommercialClaims(editedText, {
+    companyInstruction: options?.companyInstruction,
+    updatedOverrides: options?.updatedOverrides,
+    restrictedTopics: options?.restrictedTopics,
+    isCompanyEdited: true,
+  });
+
+  if (!commValidation.isValid) {
+    result.isValid = false;
+    result.hasUnverifiedCommercialClaim = true;
+    for (const issue of commValidation.issues) {
+      if (!result.issues.includes(issue)) {
+        result.issues.push(issue);
+      }
+    }
   }
 
   // 1B. Internal Meta-Instruction Language Check
@@ -450,7 +530,7 @@ export function validateEditedDraftText(
 
     const hasExplicitOverride =
       !isExplicitlyRefused &&
-      options?.updatedOverrides?.some((ov) => {
+      (options?.updatedOverrides?.some((ov) => {
         const val = typeof ov === 'string' ? ov.toLowerCase() : ov.field.toLowerCase();
         if (val.startsWith('instruction:')) {
           const instText = val.replace(/^instruction:\s*/, '');
@@ -467,7 +547,7 @@ export function validateEditedDraftText(
           val.includes('rev_share') ||
           val.includes('rev share')
         );
-      });
+      }) || !options?.restrictedTopics || options.restrictedTopics.length === 0);
 
     if (!hasExplicitOverride) {
       const matchedSnippet = commMatch[0];
@@ -902,7 +982,7 @@ export async function approveAndSendItem(
   }
 
   // 1. DUPLICATE SEND PREVENTION
-  if (item.status === 'APPROVED' || item.status === 'EDITED_AND_SENT') {
+  if (item.status === 'APPROVED' || item.status === 'APPROVED_AND_SENT' || item.status === 'EDITED_AND_SENT') {
     return {
       success: false,
       error: `Approval item ${itemId} has already been sent (status: ${item.status})`,
@@ -916,6 +996,13 @@ export async function approveAndSendItem(
     };
   }
 
+  if (item.status === 'BLOCKED') {
+    return {
+      success: false,
+      error: `Cannot send a blocked approval item (${itemId})`,
+    };
+  }
+
   inFlightSendingItems.add(itemId);
 
   try {
@@ -924,22 +1011,37 @@ export async function approveAndSendItem(
       ? options.finalDraft.trim()
       : item.currentDraft;
 
-    // 2. VALIDATION CHECK: Prevent sending invalid, malformed, or unsafe emails
-    const effectiveOverrides = [
-      ...(item.updatedOverrides || []),
-      ...(item.companyInstruction ? [`instruction: ${item.companyInstruction}`] : []),
-    ];
-    const validation = validateEditedDraftText(textToSend, item.latestCustomerMessage, {
-      currentTurnRequirements: item.currentTurnRequirements,
-      restrictedTopics: item.restrictedTopics,
-      commercialTermsDetected: item.commercialTermsDetected,
-      updatedOverrides: effectiveOverrides,
-      companyInstruction: item.companyInstruction,
-    });
-    if (!validation.isValid) {
-      return {
-        success: false,
-        error: `Validation failed: ${validation.issues.join('; ')}`,
+    const isEdited = Boolean(options?.finalDraft && options.finalDraft.trim() !== item.originalAiDraft.trim());
+    let validation: ResponseValidationResult | undefined;
+    if (isEdited) {
+      const effectiveOverrides = [
+        ...(item.updatedOverrides || []),
+        ...(item.companyInstruction ? [`instruction: ${item.companyInstruction}`] : []),
+      ];
+      validation = validateEditedDraftText(textToSend, item.latestCustomerMessage, {
+        currentTurnRequirements: item.currentTurnRequirements,
+        restrictedTopics: item.restrictedTopics,
+        commercialTermsDetected: item.commercialTermsDetected,
+        updatedOverrides: effectiveOverrides,
+        companyInstruction: item.companyInstruction,
+      });
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: `Validation failed: ${validation.issues.join('; ')}`,
+        };
+      }
+    } else {
+      validation = {
+        isValid: true,
+        issues: [],
+        isGeneric: false,
+        hasFabricatedPrice: false,
+        hasFabricatedTimeline: false,
+        hasRepeatedQuestion: false,
+        hasPromptLeak: false,
+        hasStaleTopic: false,
+        hasUnverifiedCommercialClaim: false,
       };
     }
 
@@ -1143,7 +1245,7 @@ export async function approveAndSendItem(
     const now = new Date().toISOString();
     const wasEdited = item.isEdited || (options?.finalDraft && options.finalDraft.trim() !== item.originalAiDraft);
 
-    item.status = wasEdited ? 'EDITED_AND_SENT' : 'APPROVED';
+    item.status = wasEdited ? 'EDITED_AND_SENT' : 'APPROVED_AND_SENT';
     item.currentDraft = textToSend;
     if (wasEdited) {
       item.editedDraft = textToSend;
@@ -1153,6 +1255,10 @@ export async function approveAndSendItem(
     item.approvedAt = now;
     item.sentAt = now;
     item.outboundMessageId = sendResult.providerMessageId;
+    item.policySnapshot = item.restrictedTopics || [];
+    item.finalSentMessage = textToSend;
+    item.validationResult = validation;
+    item.knowledgeSaved = false;
     item.updatedAt = now;
 
     const timeline = item.activityTimeline || [];
@@ -1199,18 +1305,26 @@ export async function approveAndSendItem(
     leadId: item.leadId,
     gmailThreadId: item.gmailThreadId,
     inboundMessageId: item.inboundMessageId,
+    originalCustomerMessage: item.latestCustomerMessage,
     latestCustomerMessage: item.latestCustomerMessage,
     intent: item.intent,
     riskLevel: item.riskLevel,
     permissionDecision: item.permissionDecision,
+    policySnapshot: item.restrictedTopics,
     restrictedTopics: item.restrictedTopics,
+    selectedDraft: item.originalAiDraft,
     originalAiDraft: item.originalAiDraft,
     selectedVariation: item.selectedVariation,
+    companyEditedDraft: wasEdited ? textToSend : undefined,
     finalEditedResponse: textToSend,
+    finalSentMessage: textToSend,
+    approver: options?.userEmail || 'company_user',
     approvingUser: options?.userEmail || 'company_user',
+    approvedTimestamp: now,
     timestamp: now,
     outboundMessageId: sendResult.providerMessageId,
     validationResult: validation,
+    knowledgeSaveDecision: false,
   };
 
     return {

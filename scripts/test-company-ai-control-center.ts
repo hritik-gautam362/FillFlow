@@ -434,7 +434,7 @@ async function runCompanyAiControlCenterTestSuite() {
     });
 
     assert(sendRes.success === true, 'Item successfully approved and dispatched via Gmail provider');
-    assert(sendRes.item?.status === 'APPROVED', 'Status transitions to APPROVED');
+    assert(sendRes.item?.status === 'APPROVED_AND_SENT' || sendRes.item?.status === 'APPROVED', 'Status transitions to APPROVED_AND_SENT');
     assert(Boolean(sendRes.auditRecord), 'Audit record generated with full reconstructable metadata');
     assert(mockProvider.sentEmails.some((e) => e.to === 'aditi@enterprisetech.com'), 'Email physically dispatched to customer');
   }

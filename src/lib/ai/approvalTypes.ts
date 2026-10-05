@@ -1,7 +1,13 @@
 import { PermissionDecision, RiskLevel, AIActivityLogEntry } from './permissionTypes';
 import { ResponseValidationResult } from './responseValidator';
 
-export type ApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EDITED_AND_SENT';
+export type ApprovalStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'APPROVED_AND_SENT'
+  | 'REJECTED'
+  | 'EDITED_AND_SENT'
+  | 'BLOCKED';
 
 export type DraftVariationStyle = 'professional' | 'relationship' | 'warm' | 'concise';
 
@@ -93,6 +99,10 @@ export interface AiApprovalItem {
   approvedAt?: string;
   sentAt?: string;
   outboundMessageId?: string;
+  policySnapshot?: Record<string, unknown> | string[];
+  finalSentMessage?: string;
+  validationResult?: ResponseValidationResult;
+  knowledgeSaved?: boolean;
 
   // Activity timeline
   activityTimeline?: AIActivityLogEntry[];

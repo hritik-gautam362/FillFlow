@@ -113,7 +113,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
     setEditedText(initialText);
     setCompanyInstruction(item.companyInstruction || '');
 
-    if (item.status === 'APPROVED' || item.status === 'EDITED_AND_SENT') {
+    if (item.status === 'APPROVED' || item.status === 'APPROVED_AND_SENT' || item.status === 'EDITED_AND_SENT') {
       setSendState('Sent');
     } else if (item.isEdited) {
       setSendState('Edited');
@@ -520,7 +520,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
       setActionSuccess('Response sent successfully.');
       setShowTeachPrompt(true);
 
-      const updatedStatus: ApprovalStatus = isEditedByCompany ? 'EDITED_AND_SENT' : 'APPROVED';
+      const updatedStatus: ApprovalStatus = isEditedByCompany ? 'EDITED_AND_SENT' : 'APPROVED_AND_SENT';
       setSelectedItem((prev) => prev ? {
         ...prev,
         status: updatedStatus,
@@ -567,7 +567,9 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
     isSubmitting ||
     allValidationIssues.length > 0 ||
     selectedItem?.status === 'APPROVED' ||
+    selectedItem?.status === 'APPROVED_AND_SENT' ||
     selectedItem?.status === 'EDITED_AND_SENT' ||
+    selectedItem?.status === 'BLOCKED' ||
     sendState === 'Sent';
 
   const pendingCount = items.filter((i) => i.status === 'PENDING').length;
@@ -607,9 +609,9 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
               Pending
             </button>
             <button
-              onClick={() => setStatusFilter('APPROVED')}
+              onClick={() => setStatusFilter('APPROVED_AND_SENT')}
               className={`px-2.5 py-1 rounded-md transition-colors ${
-                statusFilter === 'APPROVED' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                statusFilter === 'APPROVED_AND_SENT' || statusFilter === 'APPROVED' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'
               }`}
             >
               Approved
@@ -629,6 +631,14 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
               }`}
             >
               Rejected
+            </button>
+            <button
+              onClick={() => setStatusFilter('BLOCKED')}
+              className={`px-2.5 py-1 rounded-md transition-colors ${
+                statusFilter === 'BLOCKED' ? 'bg-purple-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Blocked
             </button>
             <button
               onClick={() => setStatusFilter('ALL')}
@@ -752,10 +762,12 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                         className={`text-[10px] ${
                           item.status === 'PENDING'
                             ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
-                            : item.status === 'APPROVED'
+                            : item.status === 'APPROVED' || item.status === 'APPROVED_AND_SENT'
                             ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10'
                             : item.status === 'EDITED_AND_SENT'
                             ? 'border-blue-500/40 text-blue-300 bg-blue-500/10'
+                            : item.status === 'BLOCKED'
+                            ? 'border-purple-500/40 text-purple-300 bg-purple-500/10'
                             : 'border-slate-600 text-slate-400'
                         }`}
                       >
@@ -1545,7 +1557,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                   variant="destructive"
                   size="sm"
                   onClick={handleReject}
-                  disabled={isSubmitting || selectedItem.status === 'APPROVED' || selectedItem.status === 'EDITED_AND_SENT' || sendState === 'Sent'}
+                  disabled={isSubmitting || selectedItem.status === 'APPROVED' || selectedItem.status === 'APPROVED_AND_SENT' || selectedItem.status === 'EDITED_AND_SENT' || selectedItem.status === 'BLOCKED' || sendState === 'Sent'}
                   className="text-xs"
                 >
                   <XCircle className="h-3.5 w-3.5 mr-1" />
@@ -1572,8 +1584,10 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                   }`}
                 >
                   <Send className="h-3.5 w-3.5 mr-1" />
-                  {selectedItem.status === 'APPROVED' || selectedItem.status === 'EDITED_AND_SENT' || sendState === 'Sent'
+                  {selectedItem.status === 'APPROVED' || selectedItem.status === 'APPROVED_AND_SENT' || selectedItem.status === 'EDITED_AND_SENT' || sendState === 'Sent'
                     ? 'Already Dispatched'
+                    : selectedItem.status === 'BLOCKED'
+                    ? 'Send Blocked by Safety'
                     : 'Approve & Send directly via Gmail'}
                 </Button>
               </div>

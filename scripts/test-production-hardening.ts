@@ -474,7 +474,7 @@ async function runHardeningTestSuite() {
     // Sending item that is currently in 'APPROVED' or 'EDITED_AND_SENT' status fails immediately
     const checkStatus = await getApprovalItem(companyAId, approvalSendItem.id);
     assert(
-      checkStatus?.status === 'APPROVED',
+      checkStatus?.status === 'APPROVED' || checkStatus?.status === 'APPROVED_AND_SENT',
       '23. Approval item state is securely locked in APPROVED state'
     );
 
