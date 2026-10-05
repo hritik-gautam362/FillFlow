@@ -702,9 +702,12 @@ async function runHardeningTestSuite() {
     // =========================================================================
     console.log('\n[SECTION 10] Google Pub/Sub Webhook Security Audit');
 
+    const originalPubSubToken = process.env.GMAIL_PUBSUB_VERIFICATION_TOKEN;
+
     // 40. Invalid webhook payload (missing message.data)
     const invalidWebhook = await handleGooglePubSubWebhook({
       body: {},
+      queryToken: originalPubSubToken,
     });
     assert(
       invalidWebhook.statusCode === 400 && invalidWebhook.responseBody.error === 'Missing message.data',
@@ -720,7 +723,10 @@ async function runHardeningTestSuite() {
         publishTime: new Date().toISOString(),
       },
     };
-    const webhookRes1 = await handleGooglePubSubWebhook({ body: samplePayload });
+    const webhookRes1 = await handleGooglePubSubWebhook({
+      body: samplePayload,
+      queryToken: originalPubSubToken,
+    });
     assert(webhookRes1.statusCode === 200, '41. Valid Pub/Sub notification returns 200 acknowledgment');
 
     // 42. Unauthorized webhook when token is configured
@@ -729,7 +735,11 @@ async function runHardeningTestSuite() {
       body: samplePayload,
       queryToken: 'wrong-token',
     });
-    delete process.env.GMAIL_PUBSUB_VERIFICATION_TOKEN;
+    if (originalPubSubToken) {
+      process.env.GMAIL_PUBSUB_VERIFICATION_TOKEN = originalPubSubToken;
+    } else {
+      delete process.env.GMAIL_PUBSUB_VERIFICATION_TOKEN;
+    }
     assert(
       unauthWebhook.statusCode === 401 && unauthWebhook.responseBody.error === 'Unauthorized',
       '42. Webhook request with mismatched verification token is rejected with 401'
