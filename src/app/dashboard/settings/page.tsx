@@ -99,7 +99,7 @@ export default function CompanySettingsPage() {
   const [city, setCity] = React.useState('');
   const [stateRegion, setStateRegion] = React.useState('');
   const [country, setCountry] = React.useState('');
-  const [timezone, setTimezone] = React.useState('UTC');
+  const [timezone, setTimezone] = React.useState('Asia/Kolkata');
 
   // Business Hours
   const [schedule, setSchedule] = React.useState<WeeklySchedule>(DEFAULT_SCHEDULE);
@@ -394,7 +394,7 @@ export default function CompanySettingsPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                  placeholder="+1 (555) 000-0000"
+                  placeholder="+91 98765 43210"
                 />
               </div>
 
@@ -409,7 +409,7 @@ export default function CompanySettingsPage() {
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
                   className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                  placeholder="e.g. America/New_York, UTC, Asia/Kolkata"
+                  placeholder="e.g. Asia/Kolkata"
                 />
               </div>
 
@@ -424,7 +424,7 @@ export default function CompanySettingsPage() {
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                  placeholder="123 Market St, Suite 400"
+                  placeholder="e.g. Indiranagar, 100 Feet Road"
                 />
               </div>
 
@@ -437,7 +437,7 @@ export default function CompanySettingsPage() {
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
                   className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                  placeholder="e.g. San Francisco"
+                  placeholder="e.g. Bengaluru"
                 />
               </div>
 
@@ -451,7 +451,7 @@ export default function CompanySettingsPage() {
                     value={stateRegion}
                     onChange={(e) => setStateRegion(e.target.value)}
                     className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                    placeholder="CA"
+                    placeholder="e.g. Karnataka"
                   />
                 </div>
                 <div>
@@ -463,7 +463,7 @@ export default function CompanySettingsPage() {
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
                     className="bg-slate-950/70 border-slate-800 text-white text-xs"
-                    placeholder="USA"
+                    placeholder="India"
                   />
                 </div>
               </div>

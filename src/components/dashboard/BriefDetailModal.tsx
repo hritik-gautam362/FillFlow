@@ -14,7 +14,7 @@ import {
   AlertTriangle,
   Layers,
   Calendar,
-  DollarSign,
+  IndianRupee,
   MessageSquare,
   Users,
   CheckCircle2,
@@ -24,6 +24,7 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
+import { formatDateTime, formatTime, formatINR } from '@/lib/formatters';
 
 interface DbChatMessage {
   id: string;
@@ -278,10 +279,10 @@ export function BriefDetailModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
                 <span className="text-slate-400 flex items-center gap-1 text-[11px]">
-                  <DollarSign className="h-3.5 w-3.5 text-emerald-400" /> Target Budget
+                  <IndianRupee className="h-3.5 w-3.5 text-emerald-400" /> Target Budget
                 </span>
                 <p className="text-base font-bold text-white">
-                  {lead.estimatedBudget || brief?.budgetRange || 'Gathering budget...'}
+                  {formatINR(lead.estimatedBudget) || formatINR(brief?.budgetRange) || 'Gathering budget...'}
                 </p>
               </div>
 
@@ -328,7 +329,7 @@ export function BriefDetailModal({
                     <span className="text-slate-400">Last Active:</span>
                     <span className="text-slate-400 font-mono text-[10px] flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {lead.lastActive ? new Date(lead.lastActive).toLocaleString() : 'Recent'}
+                      {lead.lastActive ? formatDateTime(lead.lastActive) : 'Recent'}
                     </span>
                   </div>
                 </div>
@@ -374,7 +375,7 @@ export function BriefDetailModal({
                           {isAgent ? 'AI Assistant' : lead.clientName || 'Client'}
                         </span>
                         <span className="text-slate-600 font-mono">
-                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {formatTime(msg.createdAt)}
                         </span>
                       </div>
 

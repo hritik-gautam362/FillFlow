@@ -253,7 +253,7 @@ export default function WebAutomationPage() {
                 Your workspace does not have Web Automation enabled. Please contact your platform administrator to activate Web channel access.
               </p>
             </div>
-            <Link href="mailto:support@apexbyte.io?subject=Activate%20Web%20Automation">
+            <Link href="mailto:support@fillflow.io?subject=Activate%20Web%20Automation">
               <Button variant="outline" size="sm" className="border-slate-700">
                 Contact Platform Admin <ExternalLink className="h-3.5 w-3.5 ml-1.5 text-indigo-400" />
               </Button>
@@ -382,9 +382,9 @@ export default function WebAutomationPage() {
                 <span className="text-[11px] text-slate-400 flex items-center gap-1">
                   <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" /> Company scoped by ID
                 </span>
-                <Link href="/chat">
+                <Link href={`/widget?companyId=${companyId || ''}`} target="_blank" rel="noopener noreferrer">
                   <Button variant="ghost" size="sm" className="text-xs text-indigo-400 hover:text-indigo-300">
-                    Test in Web Chat <ArrowLeft className="h-3 w-3 rotate-180 ml-1" />
+                    Preview Widget <ExternalLink className="h-3 w-3 ml-1" />
                   </Button>
                 </Link>
               </div>

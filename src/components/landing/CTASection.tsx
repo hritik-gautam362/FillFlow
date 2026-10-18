@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Bot, MessageSquare, Zap } from 'lucide-react';
+import { ArrowRight, Bot, Sparkles, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function CTASection() {
@@ -14,18 +14,18 @@ export function CTASection() {
         </div>
 
         <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight max-w-3xl mx-auto leading-tight">
-          Stop Losing Prospects to Faster Responding Competitors.
+          Capture and Structure Inbound Client Inquiries Automatically.
         </h2>
 
         <p className="text-slate-300 text-base sm:text-lg max-w-2xl mx-auto">
-          Test the live client chat experience or explore the company dashboard right now.
+          Connect your Gmail or WhatsApp to start extracting project scopes, timelines, and budgets into structured briefs.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link href="/chat">
+          <Link href="/signup">
             <Button variant="glow" size="lg" className="w-full sm:w-auto flex items-center justify-center gap-2 text-base px-8">
-              <MessageSquare className="h-5 w-5" />
-              Launch Client Chat Demo
+              <Sparkles className="h-5 w-5" />
+              Get Started Free
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>

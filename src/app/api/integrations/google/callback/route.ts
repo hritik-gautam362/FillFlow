@@ -8,8 +8,13 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-const JWT_SECRET_STRING = process.env.JWT_SECRET || 'apexbyte-secret-saas-platform-key-2026-secure';
-const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('CRITICAL: JWT_SECRET environment variable is missing in production.');
+  }
+  return new TextEncoder().encode(secret || 'apexbyte-secret-saas-platform-key-2026-secure');
+}
 
 interface OAuthStatePayload {
   companyId: string;
@@ -74,7 +79,7 @@ export async function GET(request: NextRequest) {
         timestamp: Date.now(),
       };
     } else {
-      const { payload } = await jwtVerify(stateParam, JWT_SECRET);
+      const { payload } = await jwtVerify(stateParam, getJwtSecret());
       statePayload = payload as unknown as OAuthStatePayload;
     }
   } catch (err) {
@@ -114,7 +119,7 @@ export async function GET(request: NextRequest) {
     accessToken = 'sim-google-access-token-' + Date.now();
     refreshToken = 'sim-google-refresh-token-' + Date.now();
     expiresIn = 3600;
-    grantedScope = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify';
+    grantedScope = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email';
     googleEmail = 'connected-workspace@gmail.com';
     googleUserId = 'sim-google-user-12345';
   } else {
@@ -177,18 +182,21 @@ export async function GET(request: NextRequest) {
     return redirectError('Could not determine connected Gmail address from Google account.');
   }
 
-  // 3. Verify that the required modify permission is granted
+  // 3. Verify that the required minimum permissions are granted (gmail.readonly and gmail.send)
   const grantedScopeList = (grantedScope || '').split(/\s+/).filter(Boolean);
+  const hasReadonly = grantedScopeList.includes('https://www.googleapis.com/auth/gmail.readonly');
+  const hasSend = grantedScopeList.includes('https://www.googleapis.com/auth/gmail.send');
   const hasModifyScope = grantedScopeList.includes('https://www.googleapis.com/auth/gmail.modify');
-  const requiresReauth = !hasModifyScope;
+  const requiresReauth = !hasReadonly || !hasSend;
+  const missingScope = !hasReadonly ? 'gmail.readonly' : !hasSend ? 'gmail.send' : null;
 
   if (requiresReauth) {
     console.error(
-      `[Google OAuth Callback] CRITICAL: Reauthorization did not grant 'https://www.googleapis.com/auth/gmail.modify'. Connection marked as requiring reauthorization.`
+      `[Google OAuth Callback] CRITICAL: Authorization did not grant required scopes (missing: ${missingScope}). Connection marked as requiring reauthorization.`
     );
   } else {
     console.log(
-      `[Google OAuth Callback] All required scopes confirmed granted including gmail.modify.`
+      `[Google OAuth Callback] All required scopes confirmed granted (gmail.readonly: ${hasReadonly}, gmail.send: ${hasSend}, gmail.modify: ${hasModifyScope}).`
     );
   }
 
@@ -214,7 +222,7 @@ export async function GET(request: NextRequest) {
 
     const connectionStatus = requiresReauth ? ConnectionStatus.error : ConnectionStatus.connected;
     const reauthReason = requiresReauth
-      ? "Account lacks 'https://www.googleapis.com/auth/gmail.modify' scope. Reauthorization required to grant modify permissions."
+      ? `Account lacks '${missingScope}' scope. Reauthorization required to grant minimum necessary permissions.`
       : null;
 
     if (process.env.NODE_ENV !== 'production') {
@@ -248,7 +256,7 @@ export async function GET(request: NextRequest) {
     return redirectError('Failed to record Google mailbox connection in database.');
   }
 
-  // 6. Establish real-time Gmail push notification watch with Google Cloud Pub/Sub ONLY if modify scope is present
+  // 6. Establish real-time Gmail push notification watch with Google Cloud Pub/Sub
   if (!requiresReauth) {
     try {
       const pubsubTopic = getGmailPubSubTopic();
@@ -267,7 +275,7 @@ export async function GET(request: NextRequest) {
   const successUrl = new URL(defaultTarget, url.origin);
   if (requiresReauth) {
     successUrl.searchParams.set('reauth_required', 'true');
-    successUrl.searchParams.set('missing_scope', 'gmail.modify');
+    successUrl.searchParams.set('missing_scope', missingScope || 'gmail.readonly');
   } else {
     successUrl.searchParams.set('google_connected', 'true');
   }

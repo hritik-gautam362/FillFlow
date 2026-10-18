@@ -55,7 +55,11 @@ export default function LoginPage() {
       <div className="absolute inset-0 bg-radial-[circle_at_50%_10%] from-indigo-950/30 via-slate-950 to-slate-950 pointer-events-none" />
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <Link href="/" className="flex items-center justify-center gap-2.5 mb-6 group">
+        <Link
+          href="/"
+          aria-label="Go to FillFlow home"
+          className="flex items-center justify-center gap-2.5 mb-6 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
             <Bot className="h-6 w-6" />
           </div>

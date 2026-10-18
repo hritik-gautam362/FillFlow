@@ -1,14 +1,24 @@
 'use client';
 
 import * as React from 'react';
+import dynamic from 'next/dynamic';
 import { Navbar } from '@/components/layout/Navbar';
 import { Footer } from '@/components/layout/Footer';
 import { StatsOverview } from '@/components/dashboard/StatsOverview';
 import { AutomationAccessOverview } from '@/components/dashboard/AutomationAccessOverview';
 import { AiApprovalQueueSection } from '@/components/dashboard/AiApprovalQueueSection';
 import { AiControlCenterSection } from '@/components/dashboard/AiControlCenterSection';
-import { BriefDetailModal } from '@/components/dashboard/BriefDetailModal';
-import { ExportModal } from '@/components/dashboard/ExportModal';
+import { formatINR } from '@/lib/formatters';
+
+const BriefDetailModal = dynamic(
+  () => import('@/components/dashboard/BriefDetailModal').then((mod) => mod.BriefDetailModal),
+  { ssr: false }
+);
+
+const ExportModal = dynamic(
+  () => import('@/components/dashboard/ExportModal').then((mod) => mod.ExportModal),
+  { ssr: false }
+);
 import { Lead, ChannelSource, LeadStatus } from '@/types';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +35,6 @@ import {
   Eye,
   Sparkles,
   Bot,
-  PlusCircle,
   CheckCircle2,
   RefreshCw,
   AlertCircle,
@@ -130,18 +139,20 @@ export default function DashboardPage() {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // Filter logic
-  const filteredLeads = leads.filter((lead) => {
-    const matchesSearch =
-      lead.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.projectType.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter logic (memoized to avoid recalculation on unrelated state changes)
+  const filteredLeads = React.useMemo(() => {
+    return leads.filter((lead) => {
+      const matchesSearch =
+        lead.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        lead.projectType.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesChannel = channelFilter === 'all' || lead.channel === channelFilter;
-    const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
+      const matchesChannel = channelFilter === 'all' || lead.channel === channelFilter;
+      const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
 
-    return matchesSearch && matchesChannel && matchesStatus;
-  });
+      return matchesSearch && matchesChannel && matchesStatus;
+    });
+  }, [leads, searchQuery, channelFilter, statusFilter]);
 
   const handleOpenLead = (lead: Lead, tab: 'overview' | 'conversation' | 'brief' = 'overview') => {
     setSelectedLead(lead);
@@ -192,13 +203,6 @@ export default function DashboardPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
             </Button>
-
-            <Link href="/chat">
-              <Button variant="outline" size="sm" className="flex items-center gap-1.5 border-slate-700 bg-slate-900">
-                <PlusCircle className="h-4 w-4 text-emerald-400" />
-                Test Client Chat Flow
-              </Button>
-            </Link>
 
             <Button
               variant="glow"
@@ -460,7 +464,7 @@ export default function DashboardPage() {
                           <td className="px-5 py-4">
                             <div className="flex flex-col space-y-0.5">
                               <span className="text-slate-200 font-medium">{lead.projectType}</span>
-                              <span className="text-emerald-400 font-semibold">{lead.estimatedBudget}</span>
+                              <span className="text-emerald-400 font-semibold">{formatINR(lead.estimatedBudget)}</span>
                               <span className="text-[10px] text-slate-400">{lead.requestedTimeline}</span>
                             </div>
                           </td>
@@ -515,16 +519,11 @@ export default function DashboardPage() {
                         {searchQuery || channelFilter !== 'all' || statusFilter !== 'all' ? (
                           <span>No leads found matching your search filters.</span>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-2">
                             <p className="text-sm font-medium text-slate-300">No leads recorded in database yet.</p>
                             <p className="text-xs text-slate-500">
-                              Use the Client Requirement Onboarding Demo to simulate a lead conversation.
+                              Inbound inquiries received via connected Gmail or WhatsApp channels will appear here automatically.
                             </p>
-                            <Link href="/chat">
-                              <Button variant="outline" size="sm" className="mt-2 text-xs border-slate-700 bg-slate-900">
-                                Open Client Chat Flow
-                              </Button>
-                            </Link>
                           </div>
                         )}
                       </td>

@@ -56,9 +56,10 @@ function formatDate(d: Date | string | null | undefined): string {
   if (!d) return 'Not provided';
   const dateObj = typeof d === 'string' ? new Date(d) : d;
   if (isNaN(dateObj.getTime())) return 'Not provided';
-  return dateObj.toLocaleString('en-US', {
+  return dateObj.toLocaleString('en-IN', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'Asia/Kolkata',
   });
 }
 
@@ -71,7 +72,7 @@ function formatArrayField(items?: string[] | null, fallback = 'Not provided'): s
 
 export async function generateProjectBriefWorkbook(data: BriefWithRelations): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'ApexByte AI Client Onboarding System';
+  workbook.creator = 'FillFlow AI Client Onboarding System';
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -95,7 +96,7 @@ export async function generateProjectBriefWorkbook(data: BriefWithRelations): Pr
   titleRow.height = 30;
   sheet.mergeCells(currentRow, 1, currentRow, 4);
   const titleCell = sheet.getCell(currentRow, 1);
-  titleCell.value = 'APEXBYTE AI — SOFTWARE PROJECT SPECIFICATION';
+  titleCell.value = 'FILLFLOW AI — SOFTWARE PROJECT SPECIFICATION';
   titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
   titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
   titleCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };

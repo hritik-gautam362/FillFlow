@@ -264,11 +264,16 @@ export async function updateCompany(id: string, data: UpdateCompanyInput) {
   });
 }
 
-export const DEFAULT_COMPANY_NAME = 'ApexByte Demo Workspace';
+export const DEFAULT_COMPANY_NAME = 'FillFlow Demo Workspace';
 
 export async function getOrCreateDefaultCompany(): Promise<Company> {
   let company = await prisma.company.findFirst({
-    where: { name: DEFAULT_COMPANY_NAME },
+    where: {
+      OR: [
+        { name: DEFAULT_COMPANY_NAME },
+        { name: 'ApexByte Demo Workspace' },
+      ],
+    },
   });
 
   if (!company) {
@@ -277,7 +282,13 @@ export async function getOrCreateDefaultCompany(): Promise<Company> {
         name: DEFAULT_COMPANY_NAME,
         industry: 'Software Consulting',
         teamSize: '10-50',
+        timezone: 'Asia/Kolkata',
       },
+    });
+  } else if (company.name === 'ApexByte Demo Workspace') {
+    company = await prisma.company.update({
+      where: { id: company.id },
+      data: { name: DEFAULT_COMPANY_NAME },
     });
   }
 

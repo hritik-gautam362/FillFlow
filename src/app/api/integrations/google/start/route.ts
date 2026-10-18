@@ -6,8 +6,13 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
-const JWT_SECRET_STRING = process.env.JWT_SECRET || 'apexbyte-secret-saas-platform-key-2026-secure';
-const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_STRING);
+function getJwtSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') {
+    throw new Error('CRITICAL: JWT_SECRET environment variable is missing in production.');
+  }
+  return new TextEncoder().encode(secret || 'apexbyte-secret-saas-platform-key-2026-secure');
+}
 
 /**
  * GET /api/integrations/google/start
@@ -78,12 +83,11 @@ export async function GET(request: NextRequest) {
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('10m') // State expires in 10 minutes
-      .sign(JWT_SECRET);
+      .sign(getJwtSecret());
 
-    // Build Google OAuth 2.0 authorization URL with required Gmail scopes
+    // Build Google OAuth 2.0 authorization URL with minimum required Gmail scopes
     const scopes = [
       'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.modify',
       'https://www.googleapis.com/auth/gmail.send',
       'https://www.googleapis.com/auth/userinfo.email',
     ];

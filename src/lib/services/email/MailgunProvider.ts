@@ -31,7 +31,7 @@ export class MailgunProvider implements EmailProvider {
     this.defaultFromEmail =
       customConfig?.fromEmail ??
       process.env.MAILGUN_FROM_EMAIL ??
-      (this.domain ? `no-reply@${this.domain}` : 'inbound@apexbyte.io');
+      (this.domain ? `no-reply@${this.domain}` : 'inbound@fillflow.io');
     this.webhookSigningKey =
       customConfig?.webhookSigningKey ??
       process.env.MAILGUN_WEBHOOK_SIGNING_KEY ??

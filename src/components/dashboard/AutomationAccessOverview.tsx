@@ -248,7 +248,7 @@ export function AutomationAccessOverview({ companyId }: AutomationAccessOverview
                       Not activated
                     </span>
                     <Link
-                      href="mailto:support@apexbyte.io?subject=Request%20Automation%20Activation"
+                      href="mailto:support@fillflow.io?subject=Request%20Automation%20Activation"
                       className="text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1 text-[11px]"
                     >
                       Contact Admin <ExternalLink className="h-3 w-3" />

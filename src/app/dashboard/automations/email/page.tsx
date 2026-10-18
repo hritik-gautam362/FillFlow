@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
+import { formatDate } from '@/lib/formatters';
 
 interface EmailQuotaData {
   monthlyLimit: number;
@@ -49,7 +50,7 @@ export default function EmailAutomationPage() {
   const [googleEmail, setGoogleEmail] = React.useState('');
   const [mailgunSenderEmail, setMailgunSenderEmail] = React.useState('');
   const [connectedDate, setConnectedDate] = React.useState<string | null>(null);
-  const [mailgunDomain, setMailgunDomain] = React.useState('mg.apexbyte.io');
+  const [mailgunDomain, setMailgunDomain] = React.useState('mg.fillflow.io');
   const [connecting, setConnecting] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
   const [copiedInbound, setCopiedInbound] = React.useState(false);
@@ -139,7 +140,7 @@ export default function EmailAutomationPage() {
           setConnectedProvider(validActiveProvider);
 
           if (connJson.data.connectedAt) {
-            setConnectedDate(new Date(connJson.data.connectedAt).toLocaleDateString());
+            setConnectedDate(formatDate(connJson.data.connectedAt));
           } else {
             setConnectedDate(null);
           }
@@ -484,7 +485,7 @@ export default function EmailAutomationPage() {
                     Usage: <span className="font-semibold text-white">{emailQuota.usedCredits} / {emailQuota.monthlyLimit} emails used</span>
                   </div>
                   <div>
-                    Resets on: <span className="font-semibold text-white">{new Date(emailQuota.nextResetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                    Resets on: <span className="font-semibold text-white">{formatDate(emailQuota.nextResetAt)}</span>
                   </div>
                 </div>
               </div>
@@ -510,7 +511,7 @@ export default function EmailAutomationPage() {
                 />
               </div>
               <span className="text-slate-400 text-[11px]">
-                Resets {new Date(emailQuota.nextResetAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                Resets {formatDate(emailQuota.nextResetAt, { month: 'short', day: 'numeric' })}
               </span>
             </div>
           </div>
@@ -528,7 +529,7 @@ export default function EmailAutomationPage() {
                 Email Automation has been disabled for your workspace by a platform administrator.
               </p>
             </div>
-            <Link href="mailto:support@apexbyte.io?subject=Activate%20Email%20Automation">
+            <Link href="mailto:support@fillflow.io?subject=Activate%20Email%20Automation">
               <Button variant="outline" size="sm" className="border-slate-700">
                 Request Activation from Admin <ExternalLink className="h-3.5 w-3.5 ml-1.5 text-indigo-400" />
               </Button>
@@ -681,7 +682,7 @@ export default function EmailAutomationPage() {
                           </Badge>
                           {watchExpiration && (
                             <span className="text-[10px] text-slate-400">
-                              Expires: {new Date(Number(watchExpiration)).toLocaleDateString()}
+                              Expires: {formatDate(Number(watchExpiration))}
                             </span>
                           )}
                         </div>
@@ -788,7 +789,7 @@ export default function EmailAutomationPage() {
                     </div>
 
                     <div className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                      Uses minimum required OAuth permissions (gmail.send, gmail.readonly, gmail.modify). Tokens are strictly encrypted using AES-256-GCM.
+                      Uses minimum required OAuth permissions (gmail.readonly, gmail.send, userinfo.email). Tokens are strictly encrypted using AES-256-GCM.
                     </div>
                   </Card>
                 )}

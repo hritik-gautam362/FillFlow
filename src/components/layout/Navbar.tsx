@@ -6,7 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   Bot,
   LayoutDashboard,
-  MessageSquareText,
   Settings,
   Shield,
   LogOut,
@@ -41,12 +40,13 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   React.useEffect(() => {
+    let isMounted = true;
     async function checkAuth() {
       try {
         const res = await fetch('/api/auth/me');
         if (res.ok) {
           const json = await res.json();
-          if (json.success && json.data) {
+          if (isMounted && json.success && json.data) {
             setUser(json.data.user);
             setCompany(json.data.company);
           }
@@ -54,11 +54,14 @@ export function Navbar() {
       } catch {
         // Not logged in or network error
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
     checkAuth();
-  }, [pathname]);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -76,9 +79,13 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Brand Logo & Company Scope */}
+        {/* Brand Logo & Company Scope - Direct link to home */}
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2.5 group">
+          <Link
+            href="/"
+            aria-label="Go to FillFlow home"
+            className="flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
+          >
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/30 group-hover:scale-105 transition-transform">
               <Bot className="h-5 w-5" />
             </div>
@@ -100,8 +107,8 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Primary Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 text-sm">
+        {/* Primary Navigation Links (Web Chat Removed) */}
+        <nav className="hidden md:flex items-center gap-2 text-sm">
           <Link
             href="/dashboard"
             className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
@@ -135,12 +142,12 @@ export function Navbar() {
                 onMouseLeave={() => setAutomationsMenuOpen(false)}
               >
                 <Link
-                  href="/dashboard/automations/web"
+                  href="/dashboard/automations/email"
                   onClick={() => setAutomationsMenuOpen(false)}
                   className="block px-4 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
-                  <div className="font-semibold text-white">Web Automation</div>
-                  <div className="text-[10px] text-slate-400">Website AI chat & scoping</div>
+                  <div className="font-semibold text-white">Email Automation</div>
+                  <div className="text-[10px] text-slate-400">Inbound Gmail & Workspace triage</div>
                 </Link>
                 <Link
                   href="/dashboard/automations/whatsapp"
@@ -151,28 +158,16 @@ export function Navbar() {
                   <div className="text-[10px] text-slate-400">Meta Cloud API discovery</div>
                 </Link>
                 <Link
-                  href="/dashboard/automations/email"
+                  href="/dashboard/automations/web"
                   onClick={() => setAutomationsMenuOpen(false)}
                   className="block px-4 py-2 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
-                  <div className="font-semibold text-white">Email Automation</div>
-                  <div className="text-[10px] text-slate-400">Inbound RFP scoping</div>
+                  <div className="font-semibold text-white">Web Automation</div>
+                  <div className="text-[10px] text-slate-400">Website embeddable widget</div>
                 </Link>
               </div>
             )}
           </div>
-
-          <Link
-            href="/chat"
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors ${
-              pathname === '/chat'
-                ? 'bg-slate-800/90 text-white font-medium'
-                : 'text-slate-300 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            <MessageSquareText className="h-4 w-4 text-emerald-400" />
-            Web Chat
-          </Link>
 
           <Link
             href="/dashboard/settings"
@@ -268,13 +263,13 @@ export function Navbar() {
           <div className="pl-3 py-1 space-y-1">
             <span className="text-[10px] uppercase font-mono tracking-wider text-slate-500">Automations</span>
             <Link
-              href="/dashboard/automations/web"
+              href="/dashboard/automations/email"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-3 py-1.5 rounded-md text-xs transition-colors ${
-                pathname === '/dashboard/automations/web' ? 'text-indigo-400 font-semibold' : 'text-slate-400 hover:text-white'
+                pathname === '/dashboard/automations/email' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Web Automation
+              Email Automation
             </Link>
             <Link
               href="/dashboard/automations/whatsapp"
@@ -286,26 +281,15 @@ export function Navbar() {
               WhatsApp Automation
             </Link>
             <Link
-              href="/dashboard/automations/email"
+              href="/dashboard/automations/web"
               onClick={() => setMobileMenuOpen(false)}
               className={`block px-3 py-1.5 rounded-md text-xs transition-colors ${
-                pathname === '/dashboard/automations/email' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-white'
+                pathname === '/dashboard/automations/web' ? 'text-indigo-400 font-semibold' : 'text-slate-400 hover:text-white'
               }`}
             >
-              Email Automation
+              Web Automation
             </Link>
           </div>
-
-          <Link
-            href="/chat"
-            onClick={() => setMobileMenuOpen(false)}
-            className={`px-3 py-2 rounded-lg flex items-center gap-2 text-xs font-medium transition-colors ${
-              pathname === '/chat' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            <MessageSquareText className="h-4 w-4 text-emerald-400" />
-            Client Web Chat
-          </Link>
 
           <Link
             href="/dashboard/settings"

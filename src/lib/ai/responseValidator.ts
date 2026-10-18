@@ -51,6 +51,7 @@ const PROMPT_LEAK_PATTERNS = [
   /generationconfig/i,
   /responsemimetype/i,
   /apexbyte ai, an expert software/i,
+  /fillflow ai, an expert software/i,
   /you are an expert, knowledgeable software engineering consultant/i,
   /ignore your previous instructions/i,
   /as an ai language model/i,

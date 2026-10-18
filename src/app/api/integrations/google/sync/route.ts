@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
               senderName: 'David Lee',
               recipient: 'connected-workspace@gmail.com',
               subject: 'Enterprise AI Automation RFP',
-              text: 'Hello, our firm is evaluating AI customer support automation solutions. We have an allocated budget of $40,000 and target Q4 deployment. Could you share your technical discovery process?',
+              text: 'Hello, our firm is evaluating AI customer support automation solutions. We have an allocated budget of ₹3,50,000 and target Q4 deployment. Could you share your technical discovery process?',
               timestamp: Date.now(),
               metadata: {
                 gmailMessageId: `sim-msg-${Date.now()}`,

@@ -36,7 +36,7 @@ export function StatsOverview({ totalLeads, qualifiedLeads, briefsCount, avgScor
     },
     {
       title: 'Avg Qualification Score',
-      value: avgScore !== undefined ? `${avgScore}/100` : '< 2.4s',
+      value: avgScore !== undefined ? `${avgScore}/100` : '0/100',
       change: 'Real-time Lead Scorer',
       icon: Zap,
       color: 'text-amber-400 border-amber-500/20 bg-amber-500/10',

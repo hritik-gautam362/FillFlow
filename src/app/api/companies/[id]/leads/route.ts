@@ -18,9 +18,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify company authorization
-    await requireCompanyAuth(companyId, request);
+    const authContext = await requireCompanyAuth(companyId, request);
 
-    const company = await getCompanyById(companyId);
+    // If session company matches, reuse verified company record; otherwise verify existence (for platform admin)
+    const company = authContext.company.id === companyId
+      ? authContext.company
+      : await getCompanyById(companyId);
+
     if (!company) {
       return errorResponse(`Company with id "${companyId}" not found.`, 404);
     }

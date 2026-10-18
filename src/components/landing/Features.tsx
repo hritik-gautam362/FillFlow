@@ -1,44 +1,44 @@
-import { MessageSquare, FileSpreadsheet, Cpu, Layers, BarChart3, Database } from 'lucide-react';
+import { Mail, FileSpreadsheet, Cpu, Layers, BarChart3, ShieldCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 export function Features() {
   const featureList = [
     {
-      icon: MessageSquare,
-      title: 'WhatsApp & Web Chat Native',
-      description: 'Engage prospects wherever they are. Seamlessly integrates with WhatsApp Business API and custom website chat widgets.',
-      badge: 'Multi-Channel',
+      icon: Mail,
+      title: 'Gmail & Google Workspace Native',
+      description: 'Connect your company Gmail mailbox via OAuth. Real-time Pub/Sub push synchronization detects new customer inquiries without manual syncing.',
+      badge: 'Email Automation',
     },
     {
       icon: Cpu,
-      title: 'AI Lead Qualification Engine',
-      description: 'Calculates a 0-100 lead score based on budget match, project timeline urgency, and decision-maker authority.',
-      badge: 'Smart Scoring',
+      title: 'Contextual AI Scoping Engine',
+      description: 'Powered by Gemini AI to classify customer intent, answer technical questions, and determine budget and timeline fit.',
+      badge: 'Intent Triage',
+    },
+    {
+      icon: ShieldCheck,
+      title: 'Commercial Safety & Approval Queue',
+      description: 'Deterministic permission rules prevent unauthorized contractual terms, guarantees, or discounts, routing sensitive requests to leadership.',
+      badge: 'Safety Controls',
     },
     {
       icon: Layers,
       title: 'Requirement & Tech Stack Extractor',
-      description: 'Automatically categorizes frontend, backend, database, third-party APIs, and security compliance requirements.',
+      description: 'Automatically categorizes frontend, backend, database, third-party APIs, and security compliance requirements from customer emails.',
       badge: 'Auto Extraction',
     },
     {
       icon: FileSpreadsheet,
       title: 'One-Click Excel / CSV Export',
-      description: 'Export all qualified leads and technical specifications in clean tabular format ready for proposal creation.',
+      description: 'Export all qualified leads, conversation histories, and technical specifications in clean tabular format ready for proposals.',
       badge: 'Excel Ready',
     },
     {
       icon: BarChart3,
       title: 'Agency Leadership Dashboard',
-      description: 'Track conversion analytics, active conversations, qualified lead value, and team assignment in real time.',
+      description: 'Track conversion analytics, active conversations, qualified lead value, and quota consumption with real-time audit logs.',
       badge: 'Analytics',
-    },
-    {
-      icon: Database,
-      title: 'Modular & Ready for Next Integration',
-      description: 'Built with clean TypeScript interfaces, ready for future PostgreSQL/Prisma schemas and custom LLM providers.',
-      badge: 'Production Ready',
     },
   ];
 

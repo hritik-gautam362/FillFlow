@@ -223,7 +223,7 @@ export default function WhatsAppAutomationPage() {
                 WhatsApp Automation has not been activated for your company yet. A platform administrator must grant access before you can connect your Meta phone number.
               </p>
             </div>
-            <Link href="mailto:support@apexbyte.io?subject=Activate%20WhatsApp%20Automation">
+            <Link href="mailto:support@fillflow.io?subject=Activate%20WhatsApp%20Automation">
               <Button variant="outline" size="sm" className="border-slate-700">
                 Request Activation from Admin <ExternalLink className="h-3.5 w-3.5 ml-1.5 text-indigo-400" />
               </Button>

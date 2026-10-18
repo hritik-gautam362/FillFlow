@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -123,7 +124,7 @@ function OnboardingWizard() {
   const [profileCity, setProfileCity] = React.useState('');
   const [profileState, setProfileState] = React.useState('');
   const [profileCountry, setProfileCountry] = React.useState('');
-  const [profileTimezone, setProfileTimezone] = React.useState('UTC');
+  const [profileTimezone, setProfileTimezone] = React.useState('Asia/Kolkata');
 
   // Step 3: Business Hours & Communication
   const [schedule, setSchedule] = React.useState<WeeklySchedule>(DEFAULT_SCHEDULE);
@@ -215,7 +216,7 @@ function OnboardingWizard() {
       setProfileCity(activeCompany.city || '');
       setProfileState(activeCompany.state || '');
       setProfileCountry(activeCompany.country || '');
-      setProfileTimezone(activeCompany.timezone || 'UTC');
+      setProfileTimezone(activeCompany.timezone || 'Asia/Kolkata');
 
       // 2. Fetch full company detail (including businessHours & communicationSettings)
       const companyRes = await fetch(`/api/companies/${activeCompany.id}`);
@@ -539,8 +540,12 @@ function OnboardingWizard() {
       {/* Top Header */}
       <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/20">
+          <Link
+            href="/"
+            aria-label="Go to FillFlow home"
+            className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
               <Bot className="h-5 w-5" />
             </div>
             <div>
@@ -551,7 +556,7 @@ function OnboardingWizard() {
                 Guided Setup
               </span>
             </div>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline-block text-xs text-slate-400">
@@ -781,7 +786,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profilePhone}
                     onChange={(e) => setProfilePhone(e.target.value)}
-                    placeholder="+1 (555) 000-0000"
+                    placeholder="+91 98765 43210"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -794,7 +799,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profileTimezone}
                     onChange={(e) => setProfileTimezone(e.target.value)}
-                    placeholder="e.g. America/New_York, UTC, Asia/Kolkata"
+                    placeholder="e.g. Asia/Kolkata"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -807,7 +812,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profileAddress}
                     onChange={(e) => setProfileAddress(e.target.value)}
-                    placeholder="123 Business Way, Suite 400"
+                    placeholder="e.g. Indiranagar, 100 Feet Road"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -820,7 +825,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profileCity}
                     onChange={(e) => setProfileCity(e.target.value)}
-                    placeholder="San Francisco"
+                    placeholder="e.g. Bengaluru"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -833,7 +838,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profileState}
                     onChange={(e) => setProfileState(e.target.value)}
-                    placeholder="California"
+                    placeholder="e.g. Karnataka"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -846,7 +851,7 @@ function OnboardingWizard() {
                     type="text"
                     value={profileCountry}
                     onChange={(e) => setProfileCountry(e.target.value)}
-                    placeholder="United States"
+                    placeholder="India"
                     className="bg-slate-950 border-slate-800 text-sm"
                   />
                 </div>
@@ -1121,7 +1126,7 @@ function OnboardingWizard() {
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="e.g. We provide custom web and mobile development. Typical project timelines are 4 to 8 weeks. Pricing begins at $5,000 for discovery and MVP build."
+                    placeholder="e.g. We provide custom web and mobile development. Typical project timelines are 4 to 8 weeks. Pricing begins at ₹2,50,000 for discovery and MVP build."
                     value={newKnowledgeContent}
                     onChange={(e) => setNewKnowledgeContent(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-800 rounded-md p-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"

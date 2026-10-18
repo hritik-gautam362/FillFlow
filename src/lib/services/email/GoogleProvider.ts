@@ -367,7 +367,7 @@ export class GoogleProvider implements EmailProvider {
         senderName: 'Simulated Client',
         recipient: this.config.connectedEmail || 'company@workspace.com',
         subject: 'Inquiry regarding software development services',
-        text: 'Hi, we are looking to build a modern SaaS customer portal. Budget is around $25k and we want it launched in 3 months.',
+        text: 'Hi, we are looking to build a modern SaaS customer portal. Budget is around ₹5,00,000 and we want it launched in 3 months.',
         timestamp: Date.now(),
       };
     }
@@ -557,8 +557,8 @@ export class GoogleProvider implements EmailProvider {
     if (!res.ok) {
       const errText = await res.text();
       let diagnosticError = `Failed to set up Gmail watch (${res.status}): ${errText}`;
-      if (res.status === 403 && (errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') || !this.hasScope('gmail.modify'))) {
-        diagnosticError = `Gmail API 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT: Account lacks 'https://www.googleapis.com/auth/gmail.modify' scope. The workspace must be reauthorized via OAuth to grant modify permissions.`;
+      if (res.status === 403 && errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+        diagnosticError = `Gmail API 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT: Account lacks required permissions ('https://www.googleapis.com/auth/gmail.readonly'). The workspace must be reauthorized via OAuth.`;
       } else if (
         (res.status === 404 || res.status === 400) &&
         (errText.includes('Resource not found') || errText.includes('PubSub') || errText.includes('gmail-inbound'))
@@ -609,10 +609,17 @@ export class GoogleProvider implements EmailProvider {
 
   /**
    * Marks a message as read in Gmail by removing the UNREAD label.
+   * Gracefully skips if the optional gmail.modify scope is not granted.
    */
   async markAsRead(messageId: string): Promise<void> {
     if (this.config.simulated) {
       this.simulatedReadMessages.add(messageId);
+      return;
+    }
+
+    // Least-privilege guard: if gmail.modify scope was not granted, skip modifying Gmail labels.
+    // Database deduplication (ChatMessage and metadata.processedEmailIds) guarantees idempotency.
+    if (!this.hasScope('gmail.modify')) {
       return;
     }
 

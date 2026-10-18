@@ -1,34 +1,34 @@
-import { MessageSquare, Bot, FileText, FileSpreadsheet } from 'lucide-react';
+import { Mail, Bot, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 
 export function HowItWorks() {
   const steps = [
     {
       num: '01',
-      icon: MessageSquare,
-      title: 'Inbound Client Contact',
-      description: 'Client connects via WhatsApp Business API or embedded Web Widget on your agency site.',
+      icon: Mail,
+      title: 'Gmail & Multi-Channel Inbound',
+      description: 'Connect your company Gmail or Google Workspace via OAuth. New customer inquiries are captured via real-time push notifications.',
       badgeColor: 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10',
     },
     {
       num: '02',
       icon: Bot,
-      title: 'AI Lead Qualification',
-      description: 'AI Agent asks intelligent questions to determine budget fit, project timeline, and urgency score (0-100).',
+      title: 'Contextual AI Scoping',
+      description: 'Gemini AI classifies customer intent, extracts project requirements (budget, timeline, stack), and composes tailored draft responses.',
       badgeColor: 'text-purple-400 border-purple-500/30 bg-purple-500/10',
     },
     {
       num: '03',
-      icon: FileText,
-      title: 'Structured Brief Generation',
-      description: 'Raw conversation is converted into a structured technical brief complete with tech stack & feature list.',
+      icon: ShieldCheck,
+      title: 'Policy Guardrails & Approval Queue',
+      description: 'Automated replies are sent only when permitted by policy. Sensitive commercial terms or custom quotes are held for human approval.',
       badgeColor: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
     },
     {
       num: '04',
       icon: FileSpreadsheet,
-      title: 'Dashboard & Excel Export',
-      description: 'Review lead scores in your Company Dashboard and export structured JSON or Excel files in one click.',
+      title: 'Structured Briefs & Dashboard',
+      description: 'Every qualified lead is converted into structured specifications and exported directly to your team via Dashboard, JSON, or Excel.',
       badgeColor: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
     },
   ];

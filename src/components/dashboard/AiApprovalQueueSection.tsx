@@ -29,6 +29,7 @@ import {
   Mail,
   Hash,
 } from 'lucide-react';
+import { formatDateTime, formatTime } from '@/lib/formatters';
 
 export type SendState = 'Draft' | 'Selected' | 'Edited' | 'Validated' | 'Sending' | 'Sent' | 'Failed';
 
@@ -833,7 +834,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                   <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
                     <span className="text-[10px] text-slate-500 flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {new Date(item.createdAt).toLocaleDateString()} {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatDateTime(item.createdAt)}
                     </span>
 
                     <div className="flex items-center gap-1.5">
@@ -1034,7 +1035,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                               </Badge>
                               {(h.timestamp || h.createdAt) && (
                                 <span className="text-slate-500">
-                                  {new Date((h.timestamp || h.createdAt) as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  {formatTime((h.timestamp || h.createdAt) as string)}
                                 </span>
                               )}
                             </div>
@@ -1688,7 +1689,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                 <div key={idx} className="p-3 rounded bg-slate-950 border border-slate-800 space-y-1">
                   <div className="flex items-center justify-between text-[10px] text-slate-500">
                     <span className="font-semibold text-cyan-400 uppercase">Version {idx + 1} ({reg.style})</span>
-                    <span>{new Date(reg.timestamp).toLocaleTimeString()}</span>
+                    <span>{formatTime(reg.timestamp)}</span>
                   </div>
                   <p className="text-slate-300 font-mono text-[11px] whitespace-pre-wrap">{reg.text || reg.content}</p>
                   <Button

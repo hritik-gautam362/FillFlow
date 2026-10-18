@@ -8,6 +8,7 @@ import {
 } from '@/lib/services/automationConnectionService';
 import { isAutomationEnabled } from '@/lib/services/automationAccessService';
 import { requireCompanyAuth } from '@/lib/auth/session';
+import { disconnectGoogleIntegration } from '@/lib/services/email/googleDisconnectService';
 import { successResponse, errorResponse, handleApiError } from '@/lib/api-response';
 import { AutomationType } from '@prisma/client';
 
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const sanitizedConnection = {
       ...connection,
       provider: connection.provider || null,
-      domain: automationType === AutomationType.email ? process.env.MAILGUN_DOMAIN || 'mg.apexbyte.io' : undefined,
+      domain: automationType === AutomationType.email ? process.env.MAILGUN_DOMAIN || 'mg.fillflow.io' : undefined,
       googlePubSubWebhookUrl: automationType === AutomationType.email ? getGooglePubSubWebhookUrl() : undefined,
       googlePubSubTopic: automationType === AutomationType.email ? getGmailPubSubTopic() : undefined,
       accessEnabled,
@@ -160,7 +161,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return errorResponse('Company not found.', 404);
     }
 
-    const connection = await disconnectAutomation(companyId, normalizedType as AutomationType);
+    let connection;
+    if (normalizedType === 'email') {
+      connection = await disconnectGoogleIntegration(companyId);
+    } else {
+      connection = await disconnectAutomation(companyId, normalizedType as AutomationType);
+    }
 
     return successResponse(connection, 200);
   } catch (error) {

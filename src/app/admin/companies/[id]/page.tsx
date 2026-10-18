@@ -25,6 +25,7 @@ import {
   History,
   RotateCcw,
 } from 'lucide-react';
+import { formatDate, formatDateTime } from '@/lib/formatters';
 
 interface CompanyDetail {
   id: string;
@@ -412,11 +413,7 @@ export default function AdminCompanyDetailPage() {
               <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-950/60">
                 <div className="text-[11px] text-slate-400 font-medium">Reset Date</div>
                 <div className="text-xs font-semibold text-slate-200 mt-1.5">
-                  {new Date(company.emailQuota.nextResetAt).toLocaleDateString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
+                  {formatDate(company.emailQuota.nextResetAt)}
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5">Idempotent monthly cycle</div>
               </div>
@@ -527,7 +524,7 @@ export default function AdminCompanyDetailPage() {
                       {company.auditLogs.slice(0, 8).map((log) => (
                         <tr key={log.id} className="hover:bg-slate-800/20">
                           <td className="py-2 px-3 text-slate-400 whitespace-nowrap">
-                            {new Date(log.createdAt).toLocaleString()}
+                            {formatDateTime(log.createdAt)}
                           </td>
                           <td className="py-2 px-3 font-mono font-medium">
                             <span
@@ -587,7 +584,7 @@ export default function AdminCompanyDetailPage() {
                       </Badge>
                     </td>
                     <td className="py-2.5 px-3 text-slate-500">
-                      {new Date(u.createdAt).toLocaleDateString()}
+                      {formatDate(u.createdAt)}
                     </td>
                   </tr>
                 ))}
