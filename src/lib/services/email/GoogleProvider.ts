@@ -251,9 +251,9 @@ export class GoogleProvider implements EmailProvider {
 
       if (params.metadata?.gmailThreadId) {
         const rawThreadId = String(params.metadata.gmailThreadId).trim();
-        // Gmail thread IDs are hexadecimal strings (e.g. "18c5e0a12b456789")
+        // Gmail thread IDs are hexadecimal strings (e.g. "18c5e0a12b456789" or "1a15f3a39881b2f0")
         // Don't send synthetic IDs like "gmail-thread-1790..." which cause 400 Invalid thread_id value
-        if (/^[0-9a-fA-F]{16}$/.test(rawThreadId)) {
+        if (/^[0-9a-fA-F]{8,32}$/.test(rawThreadId)) {
           requestBody.threadId = rawThreadId;
         }
       }
@@ -443,17 +443,20 @@ export class GoogleProvider implements EmailProvider {
    * Lists message history since a specified history ID.
    * Throws an error with isExpiredHistoryId: true if HTTP 404 (history ID expired/invalid).
    */
-  async listHistory(startHistoryId: string): Promise<{ messageIds: string[]; latestHistoryId: string }> {
+  async listHistory(
+    startHistoryId: string,
+    initialPageToken?: string
+  ): Promise<{ messageIds: string[]; latestHistoryId: string; hasMorePages: boolean; nextPageToken?: string }> {
     if (this.config.simulated) {
-      return { messageIds: [], latestHistoryId: startHistoryId };
+      return { messageIds: [], latestHistoryId: startHistoryId, hasMorePages: false };
     }
 
     let accessToken = await this.getValidAccessToken();
     const messageIds = new Set<string>();
-    let pageToken: string | undefined = undefined;
+    let pageToken: string | undefined = initialPageToken;
     let latestHistoryId = startHistoryId;
     let pageCount = 0;
-    const MAX_PAGES = 5;
+    const MAX_PAGES = 25;
 
     do {
       pageCount++;
@@ -502,6 +505,13 @@ export class GoogleProvider implements EmailProvider {
               }
             }
           }
+          if (Array.isArray(item.labelsAdded)) {
+            for (const lAdded of item.labelsAdded) {
+              if (lAdded.message?.id && Array.isArray(lAdded.labelIds) && lAdded.labelIds.includes('INBOX')) {
+                messageIds.add(lAdded.message.id);
+              }
+            }
+          }
         }
       }
 
@@ -511,6 +521,8 @@ export class GoogleProvider implements EmailProvider {
     return {
       messageIds: Array.from(messageIds),
       latestHistoryId,
+      hasMorePages: Boolean(pageToken),
+      nextPageToken: pageToken,
     };
   }
 
@@ -677,6 +689,7 @@ export class GoogleProvider implements EmailProvider {
 
   /**
    * Checks whether an outbound reply from the connected account already exists for a specific incoming message in the thread.
+   * Reconciles using both Gmail message IDs and RFC 2822 Message-IDs across In-Reply-To, References, and chronological thread sequence.
    */
   async hasOutboundReply(threadId: string, incomingMessageId?: string): Promise<boolean> {
     if (this.config.simulated) {
@@ -689,7 +702,7 @@ export class GoogleProvider implements EmailProvider {
     try {
       const accessToken = await this.getValidAccessToken();
       const res = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=from&metadataHeaders=in-reply-to&metadataHeaders=references`,
+        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${threadId}?format=metadata&metadataHeaders=from&metadataHeaders=in-reply-to&metadataHeaders=references&metadataHeaders=message-id`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -706,8 +719,35 @@ export class GoogleProvider implements EmailProvider {
       }>) || [];
 
       const connectedEmail = (this.config.connectedEmail || '').toLowerCase();
+      const cleanIncomingId = (incomingMessageId || '').trim().replace(/^<|>$/g, '');
 
-      for (const m of messages) {
+      // 1. Locate incoming message and its RFC Message-ID in the thread
+      let incomingIndex = -1;
+      let incomingRfcId = '';
+
+      if (cleanIncomingId) {
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i];
+          if (m.id === cleanIncomingId) {
+            incomingIndex = i;
+          }
+          const headers = m.payload?.headers || [];
+          for (const h of headers) {
+            if (h.name.toLowerCase() === 'message-id') {
+              const rfcVal = h.value.trim().replace(/^<|>$/g, '');
+              if (m.id === cleanIncomingId || rfcVal === cleanIncomingId) {
+                incomingIndex = i;
+                incomingRfcId = rfcVal;
+              }
+            }
+          }
+          if (incomingIndex !== -1 && incomingRfcId) break;
+        }
+      }
+
+      // 2. Scan thread messages for outbound reply from connected account
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
         const headers = m.payload?.headers || [];
         let fromHeader = '';
         let inReplyTo = '';
@@ -720,12 +760,43 @@ export class GoogleProvider implements EmailProvider {
           if (name === 'references') references = h.value;
         }
 
-        // Only mark as replied if an outbound message specifically references or replies to this incomingMessageId
-        if (connectedEmail && fromHeader.includes(connectedEmail)) {
-          if (incomingMessageId) {
-            if (inReplyTo.includes(incomingMessageId) || references.includes(incomingMessageId)) {
+        const isFromConnectedAccount = connectedEmail ? fromHeader.includes(connectedEmail) : false;
+
+        if (isFromConnectedAccount) {
+          // If message explicitly references incoming message ID or RFC ID
+          if (cleanIncomingId) {
+            if (
+              inReplyTo.includes(cleanIncomingId) ||
+              references.includes(cleanIncomingId) ||
+              (incomingRfcId && (inReplyTo.includes(incomingRfcId) || references.includes(incomingRfcId)))
+            ) {
               return true;
             }
+            // If message appears AFTER the incoming message in chronological thread order
+            if (incomingIndex !== -1 && i > incomingIndex) {
+              // Confirm this outbound message is a response to this incoming message,
+              // and no intervening customer message arrived between incomingIndex and i
+              let customerIntervened = false;
+              for (let k = incomingIndex + 1; k < i; k++) {
+                const prevM = messages[k];
+                const prevHeaders = prevM.payload?.headers || [];
+                let prevFrom = '';
+                for (const h of prevHeaders) {
+                  if (h.name.toLowerCase() === 'from') prevFrom = h.value.toLowerCase();
+                }
+                const prevIsOutbound = connectedEmail ? prevFrom.includes(connectedEmail) : false;
+                if (!prevIsOutbound) {
+                  customerIntervened = true;
+                  break;
+                }
+              }
+              if (!customerIntervened) {
+                return true;
+              }
+            }
+          } else {
+            // General outbound message exists in thread
+            return true;
           }
         }
       }
@@ -800,13 +871,15 @@ export class GoogleProvider implements EmailProvider {
     // Remove HTML tags if accidentally passed
     let cleaned = text.replace(/<[^>]*>/g, ' ');
 
-    // Cut off common reply quote markers
+    // Cut off common reply quote markers (including multi-line Gmail headers)
     const replySeparators = [
       /^-{2,}\s*Original Message\s*-{2,}/im,
       /^_{2,}/m,
+      /\r?\nOn (?:[^\n]+\r?\n){0,3}[^\n]+wrote:\s*/im,
       /^On .+ wrote:/im,
       /^At .+, .+ wrote:/im,
       /^From:\s+.+[\r\n]+Sent:\s+.+/im,
+      /\r?\nFrom:\s+[^\n]+[\r\n]+(?:Date|To|Subject):/im,
     ];
 
     for (const sep of replySeparators) {
@@ -816,7 +889,7 @@ export class GoogleProvider implements EmailProvider {
       }
     }
 
-    // Filter out leading quote arrows ('> ...')
+    // Filter out leading quote arrows ('> ...') and empty leading/trailing lines
     const lines = cleaned.split(/\r?\n/);
     const filteredLines = lines.filter((line) => !line.trim().startsWith('>'));
 

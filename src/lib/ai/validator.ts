@@ -439,6 +439,51 @@ export function generateContextualFallback(
     }
     baseReq.projectType = baseReq.projectType || 'Project Pricing / Quotation';
   }
+  // Response Branch 2A-1: Operational & Workflow Automation / Clothing Store Delivery Management
+  else if (
+    /\b(?:manag(?:e|ing)\s+orders?\s+and\s+deliveries?|order\s+and\s+delivery\s+management|delivery\s+automation|automate\s+(?:order|delivery|dispatch)|managing\s+orders\s+and\s+deliveries\s+alone)\b/i.test(lowerMsg) ||
+    Boolean(structuredContext.facts.orderIntake) ||
+    Boolean(structuredContext.facts.workflowGoal) ||
+    Boolean(baseReq.projectType?.includes('order and delivery')) ||
+    (history && history.some(m => /\b(?:manag(?:e|ing)\s+orders?\s+and\s+deliveries?|order\s+and\s+delivery\s+management|delivery\s+automation)\b/i.test(m.text)))
+  ) {
+    const greeting = hasActiveThreadHistory ? 'Thanks for following up' : `Thanks for reaching out to ${companyName}`;
+    const bizName = customerBusiness ? ` for your ${customerBusiness}` : '';
+    const resolvedChannel = structuredContext.facts.orderIntake || (/^(?:gmail|email|shopify|woocommerce|instagram|whatsapp|spreadsheet|excel)$/i.test(lowerMsg.trim()) ? lowerMsg.trim() : null);
+
+    if (resolvedChannel) {
+      replyText = `Hi,\n\nThanks for confirming that your orders arrive via ${resolvedChannel}. To ensure we tailor the order and delivery management automation precisely to your workflow${bizName}, could you let us know how your order details are typically structured in ${resolvedChannel} (for example, standard email receipts or customer messages), and which delivery service or courier you currently use for fulfillment?\n\nBest regards,\n${companyName}`;
+      nextQuestion = `Could you let us know how your order details are typically structured in ${resolvedChannel} and which delivery service or courier you currently use for fulfillment?`;
+      clientQuestionAnswered = `Acknowledged ${resolvedChannel} order intake and scoped email formatting and delivery dispatch`;
+    } else {
+      replyText = `Hi,\n\n${greeting}. We would be glad to help you automate your order and delivery management${bizName} so you don't have to handle everything alone.\n\nTo help us determine the best way to connect with your current setup, could you let us know what platform or tool you currently use to receive your initial customer orders (for example, Gmail, an online store, social media DMs, or a spreadsheet)?\n\nBest regards,\n${companyName}`;
+      nextQuestion = 'Could you let us know what platform or tool you currently use to receive your initial customer orders?';
+      clientQuestionAnswered = 'Addressed order and delivery automation and requested initial order intake tool';
+    }
+    baseReq.projectType = 'order and delivery management automation';
+  }
+  // Response Branch 2A-2: Bakery & Custom Food Orders
+  else if (
+    /\b(?:cake|bakery|wedding\s+cake|custom\s+cake|cupcakes?|pastr(?:y|ies)|catering)\b/i.test(lowerMsg) ||
+    (history && history.some(m => /\b(?:cake|bakery|wedding\s+cake|catering)\b/i.test(m.text)))
+  ) {
+    const greeting = hasActiveThreadHistory ? 'Thanks for following up' : `Thanks for reaching out to ${companyName}`;
+    replyText = `Hi,\n\n${greeting}. We would love to help you with your custom order.\n\nCould you share your target event date, approximate guest count, and any specific flavor or design preferences you have in mind?\n\nBest regards,\n${companyName}`;
+    nextQuestion = 'Could you share your target event date, approximate guest count, and any specific flavor or design preferences you have in mind?';
+    clientQuestionAnswered = 'Addressed bakery and custom cake inquiry';
+    baseReq.projectType = 'Custom Bakery / Cake Order';
+  }
+  // Response Branch 2A-3: Event Planning & Corporate Summits
+  else if (
+    /\b(?:event\s+plann(?:ing|er)|corporate\s+summit|annual\s+summit|conference\s+organization|wedding\s+planning)\b/i.test(lowerMsg) ||
+    (history && history.some(m => /\b(?:event\s+plann(?:ing|er)|corporate\s+summit|conference\s+organization)\b/i.test(m.text)))
+  ) {
+    const greeting = hasActiveThreadHistory ? 'Thanks for following up' : `Thanks for reaching out to ${companyName}`;
+    replyText = `Hi,\n\n${greeting}. We would be delighted to assist you with coordinating your upcoming event.\n\nCould you let us know the planned dates, estimated attendee count, and preferred venue or location for the event?\n\nBest regards,\n${companyName}`;
+    nextQuestion = 'Could you let us know the planned dates, estimated attendee count, and preferred venue or location for the event?';
+    clientQuestionAnswered = 'Addressed event planning and coordination inquiry';
+    baseReq.projectType = 'Event Planning & Coordination';
+  }
   // Response Branch 2B: Service / Technology Capability Inquiry (e.g. mobile apps, React Native, custom engineering)
   else if (
     cleanIntent.includes('service') ||

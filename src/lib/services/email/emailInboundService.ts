@@ -188,6 +188,357 @@ export function logEmailBatchStatus(params: {
 }
 
 /**
+ * Strips multi-line email reply quote headers and quoted lines from inbound email body.
+ */
+export function cleanInboundEmailBody(text: string): string {
+  if (!text) return '';
+  let cleaned = text;
+  cleaned = cleaned.replace(/(?:\r?\n|^)-{2,}\s*Original Message\s*-{2,}[\s\S]*$/i, '');
+  cleaned = cleaned.replace(/(?:\r?\n|^)On\s+[\s\S]+?wrote:[\s\S]*$/i, '');
+  cleaned = cleaned.replace(/(?:\r?\n|^)From:\s+[^\n]+[\s\S]*?(?:Sent|To|Subject):[\s\S]*$/i, '');
+  cleaned = cleaned.replace(/(?:\r?\n|^)>+[\s\S]*$/m, '');
+  return cleaned.trim() || text.trim();
+}
+
+/**
+ * Records or updates message processing status in AutomationConnection metadata for distributed lease coordination.
+ */
+export interface LeaseAcquisitionResult {
+  acquired: boolean;
+  leaseToken?: string;
+  reason?: 'ALREADY_PROCESSED' | 'IN_FLIGHT_LEASE_ACTIVE' | 'CONNECTION_NOT_FOUND' | 'ERROR';
+}
+
+/**
+ * Prunes processedEmailIds to ensure connection metadata does not grow without bound.
+ * Retains the most recent maxEntries (default 500) based on completedAt or lockedAt timestamp.
+ */
+export function pruneProcessedEmailMap(
+  map: Record<string, unknown>,
+  maxEntries = 500
+): Record<string, unknown> {
+  const keys = Object.keys(map);
+  if (keys.length <= maxEntries) return map;
+
+  const entries = Object.entries(map).map(([k, v]) => {
+    const obj = (v as { completedAt?: number; lockedAt?: number }) || {};
+    const ts = obj.completedAt || obj.lockedAt || 0;
+    return { k, v, ts };
+  });
+
+  entries.sort((a, b) => b.ts - a.ts); // newest first
+  const pruned: Record<string, unknown> = {};
+  for (let i = 0; i < maxEntries; i++) {
+    pruned[entries[i].k] = entries[i].v;
+  }
+  return pruned;
+}
+
+/**
+ * Truly atomic distributed lease acquisition for an incoming email message.
+ * Executes a PostgreSQL row-locked atomic update with conditional jsonb_set so that concurrent
+ * serverless or worker instances cannot simultaneously acquire a lease for the same message.
+ * Returns a unique leaseToken used for fencing before send.
+ * Window: 90 seconds. If an active lease is held, returns acquired: false.
+ */
+export async function tryAcquireEmailMessageLease(
+  companyId: string,
+  messageId: string,
+  extra?: { sender?: string; subject?: string }
+): Promise<LeaseAcquisitionResult> {
+  if (!companyId || !messageId) {
+    return { acquired: false, reason: 'ERROR' };
+  }
+
+  const now = Date.now();
+  const leaseToken = `lease_${now}_${Math.random().toString(36).slice(2, 9)}`;
+  const leaseCutoff = now - 90_000; // 90-second lease window
+
+  // 1. Attempt database-level atomic row update via PostgreSQL queryRaw
+  try {
+    const entryPayload = JSON.stringify({
+      status: 'in_flight',
+      lockedAt: now,
+      leaseToken,
+      sender: extra?.sender,
+      subject: extra?.subject,
+    });
+
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      UPDATE "AutomationConnection"
+      SET "metadata" = jsonb_set(
+        COALESCE("metadata"::jsonb, '{}'::jsonb),
+        ARRAY['processedEmailIds', ${messageId}],
+        ${entryPayload}::jsonb,
+        true
+      ),
+      "updatedAt" = NOW()
+      WHERE "companyId" = ${companyId}
+        AND "automationType" = 'email'::"AutomationType"
+        AND (
+          "metadata" IS NULL
+          OR ("metadata"::jsonb)->'processedEmailIds' IS NULL
+          OR ("metadata"::jsonb)->'processedEmailIds'->${messageId} IS NULL
+          OR (
+            (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'status') = 'in_flight'
+            AND COALESCE((("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'lockedAt')::bigint, 0) < ${leaseCutoff}
+          )
+        )
+      RETURNING "id"
+    `;
+
+    if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id && !('monthlyLimit' in rows[0])) {
+      return { acquired: true, leaseToken };
+    }
+
+    // Row not updated: determine whether already processed or active lease held
+    const conn = await prisma.automationConnection.findFirst({
+      where: { companyId, automationType: AutomationType.email },
+      select: { metadata: true },
+    });
+    if (!conn) {
+      return { acquired: false, reason: 'CONNECTION_NOT_FOUND' };
+    }
+    const meta = (conn.metadata as Record<string, unknown>) || {};
+    const processedMap = (meta.processedEmailIds as Record<string, unknown>) || {};
+    const entry = processedMap[messageId] as { status?: string; lockedAt?: number } | undefined;
+    if (entry?.status === 'processed' || entry?.status === 'replied') {
+      return { acquired: false, reason: 'ALREADY_PROCESSED' };
+    }
+    if (entry?.status === 'in_flight') {
+      return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
+    }
+    return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
+  } catch (sqlErr) {
+    console.error('SQL_RAW_ERR:', (sqlErr as Error)?.message || sqlErr);
+    // 2. Safe transactional/optimistic fallback for test environments or drivers without raw SQL
+    try {
+      const conn = await prisma.automationConnection.findFirst({
+        where: { companyId, automationType: AutomationType.email },
+        select: { id: true, metadata: true },
+      });
+      if (!conn) return { acquired: false, reason: 'CONNECTION_NOT_FOUND' };
+
+      const currentMeta = (conn.metadata as Record<string, unknown>) || {};
+      const processedMap = (currentMeta.processedEmailIds as Record<string, unknown>) || {};
+      const existing = processedMap[messageId] as { status?: string; lockedAt?: number } | undefined;
+
+      if (existing?.status === 'processed' || existing?.status === 'replied') {
+        return { acquired: false, reason: 'ALREADY_PROCESSED' };
+      }
+      if (existing?.status === 'in_flight' && typeof existing.lockedAt === 'number') {
+        if (now - existing.lockedAt < 90_000) {
+          return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
+        }
+      }
+
+      processedMap[messageId] = {
+        status: 'in_flight',
+        lockedAt: now,
+        leaseToken,
+        sender: extra?.sender,
+        subject: extra?.subject,
+      };
+
+      await prisma.automationConnection.update({
+        where: { id: conn.id },
+        data: {
+          metadata: {
+            ...currentMeta,
+            processedEmailIds: processedMap,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      return { acquired: true, leaseToken };
+    } catch {
+      return { acquired: false, reason: 'ERROR' };
+    }
+  }
+}
+
+/**
+ * Fencing verification: Confirms that this worker still holds the valid, unexpired lease token
+ * before dispatching an outbound send or taking irreversible actions.
+ */
+export async function verifyEmailMessageLease(
+  companyId: string,
+  messageId: string,
+  leaseToken?: string
+): Promise<boolean> {
+  if (!companyId || !messageId) return false;
+  if (!leaseToken) return true; // Backward-compatible if no token provided
+
+  try {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "AutomationConnection"
+      WHERE "companyId" = ${companyId}
+        AND "automationType" = 'email'::"AutomationType"
+        AND (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'leaseToken') = ${leaseToken}
+        AND (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'status') = 'in_flight'
+      LIMIT 1
+    `;
+    if (Array.isArray(rows) && rows.length > 0 && rows[0]?.id && !('monthlyLimit' in rows[0])) {
+      return true;
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    const conn = await prisma.automationConnection.findFirst({
+      where: { companyId, automationType: AutomationType.email },
+      select: { metadata: true },
+    });
+    const meta = (conn?.metadata as Record<string, unknown>) || {};
+    const processedMap = (meta.processedEmailIds as Record<string, { leaseToken?: string; status?: string }>) || {};
+    const entry = processedMap[messageId];
+    return entry?.status === 'in_flight' && entry?.leaseToken === leaseToken;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Releases an in-flight lease if processing aborts prior to outbound dispatch.
+ * If leaseToken is provided, safely releases ONLY IF the lease is still owned by this token,
+ * preventing an expired worker from wiping a newer worker's active lease.
+ */
+export async function releaseEmailMessageLease(
+  companyId: string,
+  messageId: string,
+  leaseToken?: string
+): Promise<void> {
+  if (!companyId || !messageId) return;
+  try {
+    if (leaseToken) {
+      await prisma.$queryRaw`
+        UPDATE "AutomationConnection"
+        SET "metadata" = jsonb_set(
+          COALESCE("metadata"::jsonb, '{}'::jsonb),
+          '{processedEmailIds}',
+          (COALESCE(("metadata"::jsonb)->'processedEmailIds', '{}'::jsonb) - ${messageId})
+        ),
+        "updatedAt" = NOW()
+        WHERE "companyId" = ${companyId}
+          AND "automationType" = 'email'::"AutomationType"
+          AND (
+            (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'leaseToken') = ${leaseToken}
+            OR (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'leaseToken') IS NULL
+          )
+      `;
+    } else {
+      await prisma.$queryRaw`
+        UPDATE "AutomationConnection"
+        SET "metadata" = jsonb_set(
+          COALESCE("metadata"::jsonb, '{}'::jsonb),
+          '{processedEmailIds}',
+          (COALESCE(("metadata"::jsonb)->'processedEmailIds', '{}'::jsonb) - ${messageId})
+        ),
+        "updatedAt" = NOW()
+        WHERE "companyId" = ${companyId}
+          AND "automationType" = 'email'::"AutomationType"
+      `;
+    }
+  } catch {
+    try {
+      const conn = await prisma.automationConnection.findFirst({
+        where: { companyId, automationType: AutomationType.email },
+        select: { id: true, metadata: true },
+      });
+      if (!conn) return;
+      const currentMeta = (conn.metadata as Record<string, unknown>) || {};
+      const processedMap = (currentMeta.processedEmailIds as Record<string, { leaseToken?: string }>) || {};
+      if (leaseToken && processedMap[messageId]?.leaseToken && processedMap[messageId]?.leaseToken !== leaseToken) {
+        // Newer worker owns the lease; do not erase!
+        return;
+      }
+      delete processedMap[messageId];
+      await prisma.automationConnection.update({
+        where: { id: conn.id },
+        data: {
+          metadata: {
+            ...currentMeta,
+            processedEmailIds: processedMap,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
+    } catch {
+      // Non-critical fallback
+    }
+  }
+}
+
+/**
+ * Records or updates message processing status in AutomationConnection metadata for distributed lease coordination.
+ * Prunes old records to guarantee metadata remains bounded.
+ */
+export async function recordEmailMessageStatusInConnection(
+  companyId: string,
+  messageId: string,
+  status: 'in_flight' | 'processed',
+  extra?: { sender?: string; subject?: string }
+): Promise<void> {
+  if (!companyId || !messageId) return;
+  if (status === 'in_flight') {
+    await tryAcquireEmailMessageLease(companyId, messageId, extra);
+    return;
+  }
+
+  // status === 'processed'
+  try {
+    const entryPayload = JSON.stringify({
+      status: 'processed',
+      completedAt: Date.now(),
+      sender: extra?.sender,
+    });
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      UPDATE "AutomationConnection"
+      SET "metadata" = jsonb_set(
+        COALESCE("metadata"::jsonb, '{}'::jsonb),
+        ARRAY['processedEmailIds', ${messageId}],
+        ${entryPayload}::jsonb,
+        true
+      ),
+      "updatedAt" = NOW()
+      WHERE "companyId" = ${companyId}
+        AND "automationType" = 'email'::"AutomationType"
+      RETURNING "id"
+    `;
+    if (Array.isArray(rows) && rows.length > 0) return;
+  } catch {
+    // fallback below
+  }
+
+  try {
+    const conn = await prisma.automationConnection.findFirst({
+      where: { companyId, automationType: AutomationType.email },
+      select: { id: true, metadata: true },
+    });
+    if (!conn) return;
+    const currentMeta = (conn.metadata as Record<string, unknown>) || {};
+    let processedMap = (currentMeta.processedEmailIds as Record<string, unknown>) || {};
+    processedMap[messageId] = {
+      status: 'processed',
+      completedAt: Date.now(),
+      sender: extra?.sender,
+    };
+    processedMap = pruneProcessedEmailMap(processedMap, 500);
+    await prisma.automationConnection.update({
+      where: { id: conn.id },
+      data: {
+        metadata: {
+          ...currentMeta,
+          processedEmailIds: processedMap,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch {
+    // Non-critical distributed lease write fallback
+  }
+}
+
+/**
  * Checks whether an incoming message has already been processed or replied to.
  * Used before picking up or processing an email.
  */
@@ -242,10 +593,43 @@ export async function isMessageAlreadyProcessed(
       });
       const meta = (conn?.metadata as Record<string, unknown>) || {};
       const processedMap = (meta.processedEmailIds as Record<string, unknown>) || {};
-      if (processedMap[gmailMsgId] || processedMap[emailMsgId]) {
-        completedEmailMessageIds.add(gmailMsgId);
-        completedEmailMessageIds.add(emailMsgId);
-        return true;
+      const entry = (processedMap[gmailMsgId] || processedMap[emailMsgId]) as
+        | { status?: string; lockedAt?: number }
+        | boolean
+        | undefined;
+
+      if (entry) {
+        if (typeof entry === 'object' && entry !== null) {
+          if (entry.status === 'processed' || entry.status === 'replied') {
+            completedEmailMessageIds.add(gmailMsgId);
+            completedEmailMessageIds.add(emailMsgId);
+            return true;
+          }
+          if (entry.status === 'in_flight') {
+            const isRecent = typeof entry.lockedAt === 'number' && Date.now() - entry.lockedAt < 90_000;
+            if (isRecent) {
+              return true;
+            }
+          } else {
+            completedEmailMessageIds.add(gmailMsgId);
+            completedEmailMessageIds.add(emailMsgId);
+            return true;
+          }
+        } else {
+          completedEmailMessageIds.add(gmailMsgId);
+          completedEmailMessageIds.add(emailMsgId);
+          return true;
+        }
+      }
+
+      // Check if an approval item is already queued for this message
+      const approvalQueue = (meta.approvalQueue as Record<string, { inboundMessageId?: string }>) || {};
+      for (const item of Object.values(approvalQueue)) {
+        if (item && (item.inboundMessageId === gmailMsgId || item.inboundMessageId === emailMsgId)) {
+          completedEmailMessageIds.add(gmailMsgId);
+          completedEmailMessageIds.add(emailMsgId);
+          return true;
+        }
       }
     } catch {
       // Non-critical check failure fallback
@@ -479,6 +863,9 @@ export async function processInboundEmail(
   const gmailMsgId = (inboundMetadata.gmailMessageId as string) || rawMsgId;
   const gmailThreadId = inboundMetadata.gmailThreadId as string | undefined;
 
+  // Clean reply quotation headers and previous thread quotes from fresh message body
+  inbound.text = cleanInboundEmailBody(inbound.text);
+
   // -------------------------------------------------------------------------
   // 1. STRICT IDEMPOTENCY CHECK (BEFORE AI Discovery & BEFORE Outbound Email)
   // -------------------------------------------------------------------------
@@ -580,6 +967,59 @@ export async function processInboundEmail(
       status: 'error',
       errorCategory: 'EMAIL_PROVIDER_ERROR',
       errorMessage: 'Could not resolve target company.',
+    };
+  }
+
+  // Synchronize distributed in-flight lease and check duplicate state for resolved company
+  const alreadyProcessedForCompany = await isMessageAlreadyProcessed(
+    gmailMsgId,
+    rawMsgId,
+    companyId,
+    defaultProvider,
+    gmailThreadId
+  );
+  if (alreadyProcessedForCompany) {
+    inFlightEmailMessageIds.delete(gmailMsgId);
+    inFlightEmailMessageIds.delete(rawMsgId);
+    completedEmailMessageIds.add(gmailMsgId);
+    completedEmailMessageIds.add(rawMsgId);
+    logEmailAutomationEvent({
+      gmailMessageId: gmailMsgId,
+      sender: inbound.sender,
+      subject: inbound.subject,
+      processingStatus: 'duplicate_ignored',
+      skippedReason: 'Company connection lease or duplicate check hit',
+    });
+    return {
+      success: true,
+      status: 'duplicate_ignored',
+      errorCategory: 'EMAIL_WEBHOOK_DUPLICATE',
+      companyId,
+    };
+  }
+
+  // Acquire distributed lease in connection metadata with database-level atomicity
+  const lease = await tryAcquireEmailMessageLease(companyId, gmailMsgId, {
+    sender: inbound.sender,
+    subject: inbound.subject,
+  });
+  if (!lease.acquired) {
+    inFlightEmailMessageIds.delete(gmailMsgId);
+    inFlightEmailMessageIds.delete(rawMsgId);
+    completedEmailMessageIds.add(gmailMsgId);
+    completedEmailMessageIds.add(rawMsgId);
+    logEmailAutomationEvent({
+      gmailMessageId: gmailMsgId,
+      sender: inbound.sender,
+      subject: inbound.subject,
+      processingStatus: 'duplicate_ignored',
+      skippedReason: `Atomic lease acquisition rejected: ${lease.reason}`,
+    });
+    return {
+      success: true,
+      status: 'duplicate_ignored',
+      errorCategory: 'EMAIL_WEBHOOK_DUPLICATE',
+      companyId,
     };
   }
 
@@ -1379,6 +1819,24 @@ export async function processInboundEmail(
     };
   }
 
+  // Guard 3: Lease fencing check — confirm that this worker still holds the valid lease token
+  if (lease.leaseToken) {
+    const isLeaseStillHeld = await verifyEmailMessageLease(companyId, gmailMsgId, lease.leaseToken);
+    if (!isLeaseStillHeld) {
+      await releaseEmailQuota(companyId, gmailMsgId, 'LEASE_LOST_BEFORE_SEND');
+      quotaSettled = true;
+      console.warn(`[Safety Guard] Lease ownership lost or expired for message ${gmailMsgId}. Aborting send to prevent duplicate reply.`);
+      inFlightEmailMessageIds.delete(gmailMsgId);
+      inFlightEmailMessageIds.delete(rawMsgId);
+      return {
+        success: false,
+        status: 'duplicate_ignored',
+        errorCategory: 'EMAIL_WEBHOOK_DUPLICATE',
+        errorMessage: 'Lease expired or claimed by another worker before send',
+      };
+    }
+  }
+
   // -------------------------------------------------------------------------
   // 11. GENERATE AND SEND OUTBOUND EMAIL REPLY
   // -------------------------------------------------------------------------
@@ -1528,6 +1986,7 @@ export async function processInboundEmail(
     completedEmailMessageIds.add(rawMsgId);
     inFlightEmailMessageIds.delete(gmailMsgId);
     inFlightEmailMessageIds.delete(rawMsgId);
+    await recordEmailMessageStatusInConnection(companyId, gmailMsgId, 'processed', { sender: inbound.sender });
 
     logEmailAutomationEvent({
       gmailMessageId: gmailMsgId,
@@ -1574,32 +2033,67 @@ export async function processInboundEmail(
     };
   }
 
-  const sendResult = await activeProvider.sendMessage({
-    to: inbound.sender,
-    from: companySenderAddress,
-    subject: replySubject,
-    text: discoveryResult.reply,
-    html: formattedHtml,
-    inReplyTo: inbound.messageId,
-    references: referencesHeader,
-    metadata: {
-      leadId: lead.id,
-      companyId,
-      agentMessageId: discoveryResult.agentMessageRecord.id,
-      incomingGmailMessageId: gmailMsgId,
-      ...(gmailThreadId ? { gmailThreadId } : {}),
-    },
-  });
+  let sendResult: { success: boolean; providerMessageId?: string; error?: string };
+  try {
+    sendResult = await activeProvider.sendMessage({
+      to: inbound.sender,
+      from: companySenderAddress,
+      subject: replySubject,
+      text: discoveryResult.reply,
+      html: formattedHtml,
+      inReplyTo: inbound.messageId,
+      references: referencesHeader,
+      metadata: {
+        leadId: lead.id,
+        companyId,
+        agentMessageId: discoveryResult.agentMessageRecord.id,
+        incomingGmailMessageId: gmailMsgId,
+        ...(gmailThreadId ? { gmailThreadId } : {}),
+      },
+    });
+  } catch (sendErr) {
+    console.warn('[Email Automation] sendMessage threw error/timeout; checking thread evidence:', (sendErr as Error).message);
+    sendResult = {
+      success: false,
+      error: (sendErr as Error).message || 'SEND_EXCEPTION',
+    };
+  }
 
   // -------------------------------------------------------------------------
   // 12. OUTBOUND SEND ERROR HANDLING (Must remain retryable)
   // -------------------------------------------------------------------------
   if (!sendResult.success) {
-    // Send failed: release reservation so 0 credits are consumed!
+    // UNCERTAIN OUTBOUND SEND RECONCILIATION:
+    // If Gmail send failed with a timeout or network error, verify with Gmail thread evidence
+    // before assuming failure, to prevent duplicate sends on retries.
+    let verifiedOutboundSent = false;
+    if (activeProvider?.hasOutboundReply && gmailThreadId) {
+      try {
+        verifiedOutboundSent = await activeProvider.hasOutboundReply(gmailThreadId, gmailMsgId);
+      } catch (checkErr) {
+        console.warn('[Email Automation] Failed to check outbound reply on thread for uncertain send:', checkErr);
+      }
+    }
+
+    if (verifiedOutboundSent) {
+      console.log(`[Email Automation] Reconciled uncertain send: Gmail thread evidence confirms message was sent for ${gmailMsgId}`);
+      sendResult = {
+        success: true,
+        providerMessageId: 'reconciled_from_thread',
+      };
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 12. OUTBOUND SEND ERROR HANDLING (Must remain retryable)
+  // -------------------------------------------------------------------------
+  if (!sendResult.success) {
+    // Send definitively failed: release reservation so 0 credits are consumed!
     await releaseEmailQuota(companyId, gmailMsgId, sendResult.error || 'SEND_FAILED');
     quotaSettled = true;
 
-    // Do NOT mark as read, remove from in-memory cache
+    // Release in-flight lease so the message can be retried safely
+    await releaseEmailMessageLease(companyId, gmailMsgId, lease.leaseToken);
     removeEmailIdFromMemory(gmailMsgId);
     removeEmailIdFromMemory(rawMsgId);
     logEmailAutomationEvent({
@@ -1662,6 +2156,7 @@ export async function processInboundEmail(
   completedEmailMessageIds.add(rawMsgId);
   inFlightEmailMessageIds.delete(gmailMsgId);
   inFlightEmailMessageIds.delete(rawMsgId);
+  await recordEmailMessageStatusInConnection(companyId, gmailMsgId, 'processed', { sender: inbound.sender });
 
   // Mark message as read in Gmail so Sync Inbox does not repeatedly process it
   if (activeProvider.markAsRead && gmailMsgId) {

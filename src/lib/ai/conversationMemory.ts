@@ -36,6 +36,10 @@ export interface CustomerFacts {
   integrations: string[];
   paymentRequirements?: string;
   checkoutPreference?: string;
+  orderIntake?: string;
+  workflowGoal?: string;
+  answeredQuestions: string[];
+  unansweredQuestions: string[];
   unresolvedPlaceholders: string[];
   confirmedDetails: string[];
 }
@@ -52,6 +56,7 @@ export interface ConversationStateContext {
   turnCount: number;
   hasExplicitCurrentQuestion: boolean;
   currentQuestionTopic?: 'agency_geography' | 'pricing' | 'partnership' | 'services_capability' | 'timing_availability' | 'general';
+  recentShortAnswer?: { question: string; answer: string; slot: string };
 }
 
 export interface StructuredConversationContext {
@@ -96,6 +101,8 @@ export function buildStructuredConversationContext(params: {
     features: [],
     techStack: [],
     integrations: [],
+    answeredQuestions: [],
+    unansweredQuestions: [],
     unresolvedPlaceholders: latestPlaceholders.map((p) => p.raw),
     confirmedDetails: [],
   };
@@ -108,6 +115,9 @@ export function buildStructuredConversationContext(params: {
   if (previousRequirements.productCount) facts.productCount = previousRequirements.productCount;
   if (previousRequirements.paymentGateway) facts.paymentRequirements = previousRequirements.paymentGateway;
   if (previousRequirements.checkoutPreference) facts.checkoutPreference = previousRequirements.checkoutPreference;
+  if ((previousRequirements as Record<string, unknown>).orderIntake) {
+    facts.orderIntake = (previousRequirements as Record<string, unknown>).orderIntake as string;
+  }
 
   const featureSet = new Set<string>();
   const addFeature = (f: string) => {
@@ -140,14 +150,26 @@ export function buildStructuredConversationContext(params: {
       facts.businessType = 'medical / healthcare practice';
     } else if (/\b(?:law|legal|attorney|lawyer)\b/i.test(lower)) {
       facts.businessType = 'law firm';
-    } else if (/\b(?:restaurant|cafe|bakery|catering|food|bistro)\b/i.test(lower)) {
+    } else if (/\b(?:bakery|cake|pastr(?:y|ies)|catering|wedding\s+cake)\b/i.test(lower)) {
+      facts.businessType = 'bakery / food business';
+    } else if (/\b(?:event\s+plann(?:ing|er)|corporate\s+summit|conference\s+organization)\b/i.test(lower)) {
+      facts.businessType = 'event planning & management';
+    } else if (/\b(?:restaurant|cafe|food|bistro)\b/i.test(lower)) {
       facts.businessType = 'restaurant / food business';
     } else if (/\b(?:retail|shop|store|boutique|ecommerce|e-commerce|online\s+store)\b/i.test(lower)) {
       if (!facts.businessType) facts.businessType = 'retail / ecommerce business';
     }
 
     // Project type
-    if (/\b(?:online\s+store|ecommerce(?:\s+website|\s+store)?|e-commerce(?:\s+website|\s+store)?)\b/i.test(lower)) {
+    if (/\b(?:manag(?:e|ing)\s+orders?\s+and\s+deliveries?|order\s+and\s+delivery\s+management|delivery\s+automation|automate\s+(?:order|delivery|dispatch))\b/i.test(lower)) {
+      facts.projectType = 'order and delivery management automation';
+      facts.workflowGoal = 'manage orders and deliveries alone using AI automations';
+      addFeature('order and delivery management automation');
+    } else if (/\b(?:cake|wedding\s+cake|custom\s+cake)\b/i.test(lower)) {
+      facts.projectType = 'custom cake / bakery order';
+    } else if (/\b(?:event\s+plann(?:ing|er)|corporate\s+summit|annual\s+summit)\b/i.test(lower)) {
+      facts.projectType = 'event planning & coordination';
+    } else if (/\b(?:online\s+store|ecommerce(?:\s+website|\s+store)?|e-commerce(?:\s+website|\s+store)?)\b/i.test(lower)) {
       facts.projectType = facts.businessType ? `online store for ${facts.businessType}` : 'online store website';
     } else if (/\binventory\s*(?:management)?\s*(?:portal|system|software|app)\b/i.test(lower) || /\binventory\s+portal\b/i.test(lower)) {
       facts.projectType = 'inventory management portal';
@@ -249,6 +271,30 @@ export function buildStructuredConversationContext(params: {
     if (explicitGuest) facts.checkoutPreference = 'Guest checkout';
     else if (explicitStandard) facts.checkoutPreference = 'Standard checkout';
     else if (explicitMultiStep) facts.checkoutPreference = 'Multi-step checkout';
+
+    // Order intake extraction across conversation turns
+    const isOrderIntakeHistoryMatch =
+      /\b(?:orders?\s+(?:through|via|arrive|in|on)|receive\s+(?:all\s+)?(?:customer\s+)?orders?\s+(?:through|via|on|in)?|receive\s+orders?)\s*(?:through|via|on|in)?\s*(gmail|shopify|woocommerce|instagram(?:\s+dms?)?|whatsapp|spreadsheets?|google\s+sheets?|excel)\b/i.test(sanitizedText) ||
+      (/\breceive\b/i.test(sanitizedText) && /\b(?:gmail|shopify|woocommerce|instagram|whatsapp)\b/i.test(sanitizedText)) ||
+      /^(?:(?:in|via|through|on)\s+)?(gmail|shopify|woocommerce|instagram(?:\s+dms?)?|whatsapp|spreadsheets?|google\s+sheets?|excel|email)$/i.test(sanitizedText.trim()) ||
+      (sanitizedText.trim().length <= 40 && /\b(gmail|shopify|woocommerce|instagram(?:\s+dms?)?|whatsapp)\b/i.test(sanitizedText));
+
+    if (isOrderIntakeHistoryMatch) {
+      const match = sanitizedText.match(/\b(gmail|shopify|woocommerce|instagram(?:\s+dms?)?|whatsapp|spreadsheets?|google\s+sheets?|excel)\b/i);
+      if (match) {
+        const raw = match[1].toLowerCase();
+        let normalized = 'Gmail';
+        if (raw.includes('shopify')) normalized = 'Shopify';
+        else if (raw.includes('woocommerce')) normalized = 'WooCommerce';
+        else if (raw.includes('instagram')) normalized = 'Instagram DMs';
+        else if (raw.includes('whatsapp')) normalized = 'WhatsApp';
+        else if (raw.includes('sheet') || raw.includes('excel')) normalized = 'Spreadsheet / Sheets';
+        facts.orderIntake = normalized;
+        if (!facts.integrations.includes(normalized)) {
+          facts.integrations.push(normalized);
+        }
+      }
+    }
   }
 
   // If latest message has placeholders for payment/checkout, mark them as unresolved unless explicitly chosen
@@ -344,9 +390,57 @@ export function buildStructuredConversationContext(params: {
     }
   }
 
+  // E. Contextual Short-Answer Resolution
+  // Inspect last agent question to resolve short replies like "Gmail", "Shopify", "yes", "no", "spreadsheets"
+  const lastAgentMsg = agentMessages.length > 0 ? agentMessages[agentMessages.length - 1].text : '';
+  const lastAgentLower = lastAgentMsg.toLowerCase();
+  const trimmedLatest = latestSanitized.trim();
+  const trimmedLatestLower = trimmedLatest.toLowerCase();
+
+  let recentShortAnswer: ConversationStateContext['recentShortAnswer'] = undefined;
+
+  const isAskingOrderIntake =
+    /\b(platform\s+or\s+tool\s+you\s+currently\s+use|what\s+platform\s+or\s+tool|where\s+orders\s+arrive|receive\s+(?:or\s+record\s+)?(?:your\s+)?(?:initial\s+)?customer\s+orders|website\s+platform,\s+social\s+media\s+dms,\s+or\s+a\s+spreadsheet)\b/i.test(lastAgentLower);
+
+  if (
+    isAskingOrderIntake ||
+    /^(?:gmail|email|shopify|woocommerce|instagram(?:\s+dms?)?|whatsapp|spreadsheets?|google\s+sheets?|excel|dms)$/i.test(trimmedLatestLower) ||
+    /\bgmail\b/i.test(trimmedLatestLower)
+  ) {
+    let resolvedChannel: string | null = null;
+    if (/\bgmail\b/i.test(trimmedLatestLower)) resolvedChannel = 'Gmail';
+    else if (/\bshopify\b/i.test(trimmedLatestLower)) resolvedChannel = 'Shopify';
+    else if (/\bwoocommerce\b/i.test(trimmedLatestLower)) resolvedChannel = 'WooCommerce';
+    else if (/\binstagram\b/i.test(trimmedLatestLower)) resolvedChannel = 'Instagram DMs';
+    else if (/\bwhatsapp\b/i.test(trimmedLatestLower)) resolvedChannel = 'WhatsApp';
+    else if (/\b(?:spreadsheets?|google\s+sheets?|excel)\b/i.test(trimmedLatestLower)) resolvedChannel = 'Spreadsheet / Sheets';
+    else if (/\bemail\b/i.test(trimmedLatestLower)) resolvedChannel = 'Email';
+
+    if (resolvedChannel) {
+      facts.orderIntake = resolvedChannel;
+      if (!facts.integrations.includes(resolvedChannel)) {
+        facts.integrations.push(resolvedChannel);
+      }
+      facts.answeredQuestions.push('Initial order intake platform/tool');
+      recentShortAnswer = {
+        question: lastAgentMsg,
+        answer: resolvedChannel,
+        slot: 'order_intake',
+      };
+      currentTurnRequirements.push({
+        type: 'scope_correction',
+        topic: 'order_intake',
+        requestedValue: resolvedChannel,
+        description: `Customer confirmed initial orders arrive via ${resolvedChannel}`,
+      });
+    }
+  }
+
   // Compile confirmed details summary list (ensuring updated budget wins)
   if (facts.businessType) facts.confirmedDetails.push(`Business Type: ${facts.businessType}`);
   if (facts.projectType) facts.confirmedDetails.push(`Project: ${facts.projectType}`);
+  if (facts.workflowGoal) facts.confirmedDetails.push(`Workflow Goal: ${facts.workflowGoal}`);
+  if (facts.orderIntake) facts.confirmedDetails.push(`Order Intake Channel: ${facts.orderIntake}`);
   if (facts.budget) facts.confirmedDetails.push(`Budget: ${facts.budget}`);
   if (facts.timeline) facts.confirmedDetails.push(`Launch Timeline: ${facts.timeline}`);
   if (facts.productCount) facts.confirmedDetails.push(`Product Count: ${facts.productCount}`);
@@ -390,6 +484,7 @@ export function buildStructuredConversationContext(params: {
     Boolean(facts.budget) ||
     Boolean(facts.timeline) ||
     Boolean(facts.businessType) ||
+    Boolean(facts.orderIntake) ||
     facts.features.length > 0;
 
   // Active topic synthesis
@@ -410,6 +505,7 @@ export function buildStructuredConversationContext(params: {
     turnCount: Math.ceil((allMessages.length) / 2),
     hasExplicitCurrentQuestion,
     currentQuestionTopic,
+    recentShortAnswer,
   };
 
   // Human-readable summary text for prompt injection
@@ -425,11 +521,19 @@ export function buildStructuredConversationContext(params: {
         summaryLines.push(`- [BUDGET CORRECTION]: ${req.description} (Overrides any previous budget!)`);
       } else if (req.type === 'communication_preference') {
         summaryLines.push(`- [COMMUNICATION PREFERENCE]: ${req.requestedValue || req.description}`);
+      } else if (req.type === 'scope_correction') {
+        summaryLines.push(`- [CONFIRMED ANSWER]: ${req.description}`);
       } else {
         summaryLines.push(`- [REQUIRED ANSWER]: "${req.description}"`);
       }
     }
     summaryLines.push(`CRITICAL DIRECTIVE: You MUST address the customer's newest questions and corrections directly in your opening sentences. DO NOT continue previous conversation threads while current questions are pending.`);
+  }
+
+  if (facts.orderIntake) {
+    summaryLines.push(`\nCONFIRMED ORDER INTAKE CHANNEL: ${facts.orderIntake} (Customer receives initial customer orders via ${facts.orderIntake})`);
+    summaryLines.push(`CRITICAL INVARIANT: DO NOT ask what platform, tool, or channel orders arrive in — customer has answered: ${facts.orderIntake}!`);
+    summaryLines.push(`NEXT LOGICAL QUESTION: Acknowledge that orders arrive via ${facts.orderIntake}, and ask about order email formatting or delivery dispatch workflow.`);
   }
 
   if (facts.confirmedDetails.length > 0) {

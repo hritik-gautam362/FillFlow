@@ -4,7 +4,6 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  Bot,
   LayoutDashboard,
   Settings,
   Shield,
@@ -16,7 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Logo } from '@/components/ui/Logo';
 
 interface UserProfile {
   id: string;
@@ -77,34 +76,17 @@ export function Navbar() {
   const isPlatformAdmin = user?.role === 'platform_admin';
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-xl">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-[#152644]/95 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand Logo & Company Scope - Direct link to home */}
         <div className="flex items-center gap-3">
-          <Link
+          <Logo
+            variant="full"
+            size="md"
             href="/"
-            aria-label="Go to FillFlow home"
-            className="flex items-center gap-2.5 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/30 group-hover:scale-105 transition-transform">
-              <Bot className="h-5 w-5" />
-            </div>
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg text-white tracking-tight">
-                  Fill<span className="text-indigo-400">Flow</span>
-                </span>
-                {company && (
-                  <Badge variant="purple" className="py-0 px-2 text-[10px] hidden sm:inline-flex max-w-[140px] truncate">
-                    {company.name}
-                  </Badge>
-                )}
-              </div>
-              <span className="text-[10px] text-slate-400 hidden md:block">
-                B2B AI Discovery & Onboarding
-              </span>
-            </div>
-          </Link>
+            companyName={company?.name}
+            subtitle="B2B AI Discovery & Onboarding"
+          />
         </div>
 
         {/* Primary Navigation Links (Web Chat Removed) */}
@@ -248,7 +230,7 @@ export function Navbar() {
 
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-800 bg-slate-950/95 backdrop-blur-xl px-4 pt-3 pb-5 space-y-2">
+        <div className="md:hidden border-t border-slate-800 bg-[#152644]/98 backdrop-blur-xl px-4 pt-3 pb-5 space-y-2">
           <Link
             href="/dashboard"
             onClick={() => setMobileMenuOpen(false)}

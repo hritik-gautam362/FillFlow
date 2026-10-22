@@ -1,24 +1,14 @@
 import Link from 'next/link';
-import { Bot, FileSpreadsheet, Layers, ShieldCheck, Zap } from 'lucide-react';
+import { FileSpreadsheet, Layers, ShieldCheck, Zap } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 
 export function Footer() {
   return (
-    <footer className="w-full border-t border-slate-800/80 bg-slate-950 text-slate-400 py-12 px-4 sm:px-6 lg:px-8">
+    <footer className="w-full border-t border-[#1f375e] bg-[#152644] text-slate-300 py-12 px-4 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl grid grid-cols-1 md:grid-cols-4 gap-8">
         {/* Brand Column */}
         <div className="space-y-4 md:col-span-1">
-          <Link
-            href="/"
-            aria-label="Go to FillFlow home"
-            className="flex items-center gap-2 group w-fit focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white group-hover:scale-105 transition-transform">
-              <Bot className="h-4 w-4" />
-            </div>
-            <span className="font-bold text-white text-lg tracking-tight">
-              Fill<span className="text-indigo-400">Flow</span>
-            </span>
-          </Link>
+          <Logo variant="full" size="sm" href="/" />
           <p className="text-xs leading-relaxed text-slate-400">
             Automating lead qualification and requirement collection for software & IT service companies.
           </p>

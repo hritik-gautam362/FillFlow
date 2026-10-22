@@ -1,12 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Logo } from '@/components/ui/Logo';
 import {
   Bot,
   Building2,
@@ -538,25 +538,9 @@ function OnboardingWizard() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       {/* Top Header */}
-      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
+      <header className="border-b border-[#1f375e] bg-[#152644]/95 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <Link
-            href="/"
-            aria-label="Go to FillFlow home"
-            className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform">
-              <Bot className="h-5 w-5" />
-            </div>
-            <div>
-              <span className="font-bold text-lg text-white tracking-tight">
-                Fill<span className="text-indigo-400">Flow</span>
-              </span>
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-medium">
-                Guided Setup
-              </span>
-            </div>
-          </Link>
+          <Logo variant="full" size="md" href="/" badgeText="Guided Setup" />
 
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline-block text-xs text-slate-400">

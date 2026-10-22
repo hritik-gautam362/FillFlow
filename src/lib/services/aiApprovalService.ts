@@ -17,6 +17,7 @@ import { reserveEmailQuota, commitEmailQuota, releaseEmailQuota } from './emailQ
 import { EmailProvider, SendEmailResult } from './email/EmailProvider';
 import { GoogleProvider } from './email/GoogleProvider';
 import { getGoogleProviderForCompany } from './email/emailProviderFactory';
+import { hasOutboundReplyAlreadyBeenSent } from './email/emailInboundService';
 import { IMMUTABLE_OUTBOUND_SAFETY_PATTERNS } from '@/lib/ai/permissionEngine';
 import { AIActivityLogEntry } from '@/lib/ai/permissionTypes';
 import {
@@ -989,6 +990,20 @@ export async function approveAndSendItem(
     };
   }
 
+  const replyAlreadySent = await hasOutboundReplyAlreadyBeenSent(
+    item.inboundMessageId,
+    item.inboundMessageId,
+    companyId,
+    options?.provider,
+    item.gmailThreadId
+  );
+  if (replyAlreadySent) {
+    return {
+      success: false,
+      error: `Outbound reply has already been sent for message ${item.inboundMessageId}`,
+    };
+  }
+
   if (item.status === 'REJECTED') {
     return {
       success: false,
@@ -1164,6 +1179,26 @@ export async function approveAndSendItem(
       replyText: textToSend,
     });
 
+    // Final pre-dispatch safety check against concurrent race conditions
+    const finalDuplicateCheck = await hasOutboundReplyAlreadyBeenSent(
+      item.inboundMessageId,
+      item.inboundMessageId,
+      companyId,
+      activeProvider,
+      item.gmailThreadId
+    );
+    if (finalDuplicateCheck) {
+      if (quotaReserved) {
+        try {
+          await releaseEmailQuota(companyId, item.inboundMessageId, 'DUPLICATE_REPLY_ABORTED');
+        } catch {}
+      }
+      return {
+        success: false,
+        error: `Outbound reply has already been sent for message ${item.inboundMessageId}`,
+      };
+    }
+
     // 4. SEND MESSAGE VIA GMAIL PROVIDER PRESERVING THREAD HEADERS
     let sendResult: SendEmailResult;
     try {
@@ -1183,14 +1218,10 @@ export async function approveAndSendItem(
         },
       });
     } catch (sendErr) {
-      if (quotaReserved) {
-        try {
-          await releaseEmailQuota(companyId, item.inboundMessageId, (sendErr as Error).message || 'SEND_EXCEPTION');
-        } catch {}
-      }
-      return {
+      console.warn('[AI Approval Service] sendMessage threw error/timeout; checking thread evidence:', (sendErr as Error).message);
+      sendResult = {
         success: false,
-        error: (sendErr as Error).message || 'Failed to dispatch email via Gmail provider',
+        error: (sendErr as Error).message || 'SEND_EXCEPTION',
       };
     }
 
@@ -1207,7 +1238,23 @@ export async function approveAndSendItem(
       };
     }
 
-    // 6. ERROR HANDLING: Release quota if sending failed & return safe error state
+    // 6. ERROR HANDLING: Check for uncertain send before releasing quota & returning error
+    if (!sendResult.success) {
+      let verifiedOutboundSent = false;
+      if (activeProvider?.hasOutboundReply && item.gmailThreadId) {
+        try {
+          verifiedOutboundSent = await activeProvider.hasOutboundReply(item.gmailThreadId, item.inboundMessageId);
+        } catch (checkErr) {
+          console.warn('[AI Approval Service] Failed to check outbound reply on thread for uncertain send:', checkErr);
+        }
+      }
+
+      if (verifiedOutboundSent) {
+        console.log(`[AI Approval Service] Reconciled uncertain send: Gmail thread evidence confirms message was sent for ${item.inboundMessageId}`);
+        sendResult.success = true;
+      }
+    }
+
     if (!sendResult.success) {
       if (quotaReserved) {
         try {

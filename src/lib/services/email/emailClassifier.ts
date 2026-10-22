@@ -424,6 +424,28 @@ const PRODUCT_INQUIRY_PATTERNS = [
   /\b(product (?:catalog|catalogue|specifications|specs|details)|do you have (?:stock|inventory) of|product inquiry|features of your product|bulk order of products)\b/i,
 ];
 
+// 13. Workflow & Delivery Automation Inquiries
+const WORKFLOW_AUTOMATION_PATTERNS = [
+  /\b(?:manag(?:ing|e)?\s+(?:my|our)?\s*(?:online\s+)?deliver(?:y|ies)|issue\s+with\s+managing\s+(?:my|our)?\s*online\s+deliveries)\b/i,
+  /\b(?:order\s+(?:and\s+)?delivery\s+(?:management|updates?|automation|workflow)|sync\s+(?:orders?|deliveries)\s+with\s+gmail)\b/i,
+  /\b(?:handling\s+(?:all\s+of\s+)?(?:this|these|orders)\s+(?:alone|by\s+myself)|handling\s+all\s+of\s+this.*online\s+customers?)\b/i,
+  /\b(?:online\s+customers?\s+wouldn't\s+get\s+disappointed|automate\s+(?:my|our)?\s*(?:gmail|inbox|orders?|deliveries))\b/i,
+  /\b(?:delivery\s+management\s+and\s+automation|fulfillment\s+process\s+automation)\b/i,
+];
+
+// 14. Food & Bakery / Cake Orders
+const FOOD_ORDER_PATTERNS = [
+  /\b(?:order\s+(?:a\s+)?(?:\d+\s*(?:kg|pound|tier))?\s*(?:birthday\s+|wedding\s+|custom\s+)?cake)\b/i,
+  /\b(?:cake\s+order|custom\s+cake|birthday\s+cake|wedding\s+cake|cupcakes?|bakery\s+order)\b/i,
+  /\b(?:chocolate\s+truffle|vanilla|red\s+velvet|fondant|buttercream|sponge\s+cake)\b/i,
+];
+
+// 15. Event & Wedding Planning Inquiries
+const EVENT_ORGANIZER_PATTERNS = [
+  /\b(?:wedding\s+(?:planner|planning|organizer|coordination|event)|event\s+(?:planner|organizer|management|coordination))\b/i,
+  /\b(?:corporate\s+event\s+planner|anniversary\s+event|birthday\s+event\s+planner)\b/i,
+];
+
 function hasPlausibleBusinessSignal(email: ParsedInboundEmail, combinedText: string): boolean {
   const text = combinedText.toLowerCase();
 
@@ -1035,15 +1057,15 @@ export function classifyDeterministically(
       };
     }
 
-    // Generic thread reply with substantive text (> 10 characters)
-    if ((email.inReplyTo || email.references || subject.toLowerCase().startsWith('re:')) && trimmedBody.length >= 10) {
+    // Generic thread reply with substantive text (including short contextual answers like "Gmail", "yes", "no", "80k")
+    if ((email.inReplyTo || email.references || subject.toLowerCase().startsWith('re:')) && trimmedBody.length >= 1) {
       return {
         classification: 'CUSTOMER_INQUIRY',
         category: 'client_inquiry',
         reason: isSpamFolder
           ? `Spam-folder conservative path: Active thread continuation (${resolvedCurrentIntent}): "${trimmedBody.substring(0, 60)}"`
           : `Active conversation thread continuation (${resolvedCurrentIntent}): "${trimmedBody.substring(0, 60)}"`,
-        confidence: isSpamFolder ? 0.88 : 0.91,
+        confidence: isSpamFolder ? 0.90 : 0.95,
         deterministic: true,
         requiresReply: true,
         intent: resolvedCurrentIntent,
@@ -1051,7 +1073,58 @@ export function classifyDeterministically(
     }
   }
 
-  // 20. General Project / Work Inquiries Across Industries
+  // 20. Workflow & Delivery Automation Inquiries
+  for (const pattern of WORKFLOW_AUTOMATION_PATTERNS) {
+    if (pattern.test(combinedText)) {
+      return {
+        classification: 'CUSTOMER_INQUIRY',
+        category: 'client_inquiry',
+        reason: isSpamFolder
+          ? 'Spam-folder conservative path: Workflow & delivery automation inquiry detected despite Spam label'
+          : 'Business workflow and delivery management inquiry detected',
+        confidence: isSpamFolder ? 0.92 : 0.96,
+        deterministic: true,
+        requiresReply: true,
+        intent: 'service_inquiry',
+      };
+    }
+  }
+
+  // 21. Food & Bakery / Cake Orders
+  for (const pattern of FOOD_ORDER_PATTERNS) {
+    if (pattern.test(combinedText)) {
+      return {
+        classification: 'CUSTOMER_INQUIRY',
+        category: 'client_inquiry',
+        reason: isSpamFolder
+          ? 'Spam-folder conservative path: Food or bakery order detected despite Spam label'
+          : 'Food or bakery cake order inquiry detected',
+        confidence: isSpamFolder ? 0.92 : 0.96,
+        deterministic: true,
+        requiresReply: true,
+        intent: 'product_inquiry',
+      };
+    }
+  }
+
+  // 22. Event & Wedding Planning Inquiries
+  for (const pattern of EVENT_ORGANIZER_PATTERNS) {
+    if (pattern.test(combinedText)) {
+      return {
+        classification: 'CUSTOMER_INQUIRY',
+        category: 'client_inquiry',
+        reason: isSpamFolder
+          ? 'Spam-folder conservative path: Event or wedding planning inquiry detected despite Spam label'
+          : 'Event or wedding planning inquiry detected',
+        confidence: isSpamFolder ? 0.92 : 0.96,
+        deterministic: true,
+        requiresReply: true,
+        intent: 'service_inquiry',
+      };
+    }
+  }
+
+  // 23. General Project / Work Inquiries Across Industries
   for (const pattern of GENERAL_PROJECT_INQUIRY_PATTERNS) {
     if (pattern.test(combinedText)) {
       return {
@@ -1321,7 +1394,7 @@ ${(email.text || '').substring(0, 1200)}${threadSummary}
  */
 export async function classifyInboundEmail(
   emailOrSubject: ParsedInboundEmail | string,
-  optionsOrBody?: { threadContext?: ThreadContext; companyContext?: CompanyContext } | string,
+  optionsOrBody?: { threadContext?: ThreadContext; companyContext?: CompanyContext } | ThreadContext | string,
   maybeThreadContext?: ThreadContext
 ): Promise<ClassificationResult> {
   let email: ParsedInboundEmail;
@@ -1341,7 +1414,13 @@ export async function classifyInboundEmail(
     };
   } else {
     email = emailOrSubject;
-    options = typeof optionsOrBody === 'object' && optionsOrBody !== null ? optionsOrBody : undefined;
+    if (typeof optionsOrBody === 'object' && optionsOrBody !== null) {
+      if ('threadContext' in optionsOrBody) {
+        options = optionsOrBody as { threadContext?: ThreadContext; companyContext?: CompanyContext };
+      } else {
+        options = { threadContext: optionsOrBody as ThreadContext };
+      }
+    }
   }
 
   const metadata = (email.metadata as Record<string, unknown>) || {};

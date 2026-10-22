@@ -884,9 +884,24 @@ export function buildApprovalQueueMetadata(
       {
         id: `act_${Date.now()}_4`,
         timestamp: new Date().toISOString(),
-        step: 'Awaiting Human Approval',
-        details: 'Routed to company approval queue for human verification',
-        status: 'pending',
+        step:
+          evaluation.decision === 'SAFE_AUTO_REPLY'
+            ? 'Autonomous Dispatch'
+            : evaluation.decision === 'BLOCKED'
+            ? 'Blocked by Policy'
+            : 'Awaiting Human Approval',
+        details:
+          evaluation.decision === 'SAFE_AUTO_REPLY'
+            ? 'Autonomous reply approved and dispatched'
+            : evaluation.decision === 'BLOCKED'
+            ? 'Inquiry blocked by safety policy'
+            : 'Routed to company approval queue for human verification',
+        status:
+          evaluation.decision === 'SAFE_AUTO_REPLY'
+            ? 'success'
+            : evaluation.decision === 'BLOCKED'
+            ? 'error'
+            : 'pending',
       },
     ],
   };

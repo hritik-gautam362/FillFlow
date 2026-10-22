@@ -525,10 +525,15 @@ export function validateCustomerResponse(params: {
     const cleanCq = cq.trim().toLowerCase();
     const coreCq = extractCoreQuestion(cleanCq);
 
-    for (const pq of priorAgentQuestions.slice(-3)) {
+    for (const pq of priorAgentQuestions) {
       const corePq = extractCoreQuestion(pq);
       const isExactMatch = cleanCq === pq;
-      const isCoreMatch = coreCq.length > 15 && corePq.length > 15 && (coreCq === corePq || (coreCq.length > 25 && corePq.includes(coreCq)));
+      const isCoreMatch =
+        coreCq.length > 15 &&
+        corePq.length > 15 &&
+        (coreCq === corePq ||
+          (coreCq.length > 20 && corePq.includes(coreCq)) ||
+          (corePq.length > 20 && coreCq.includes(corePq)));
 
       const clientBroughtUpTopic =
         (lowerClientMsg.includes('payment') && (cleanCq.includes('payment') || cleanCq.includes('gateway'))) ||
@@ -540,6 +545,20 @@ export function validateCustomerResponse(params: {
         break;
       }
     }
+  }
+
+  // F. Order intake / channel already known but asked again
+  const orderIntakeKnown = Boolean(
+    knownRequirements?.integrations?.some((i) => /gmail|email|shopify|spreadsheet|sheets|instagram|whatsapp/i.test(i)) ||
+    (knownRequirements as Record<string, unknown>)?.orderIntake ||
+    history.some((m) => m.sender === 'client' && /^(?:gmail|email|shopify|woocommerce|instagram|whatsapp|spreadsheet|excel)$/i.test(m.text.trim()))
+  );
+  if (
+    orderIntakeKnown &&
+    /\b(platform\s+or\s+tool\s+you\s+currently\s+use|what\s+platform\s+or\s+tool|how\s+or\s+where\s+(?:initial\s+)?orders|where\s+(?:do\s+)?orders\s+arrive|receive\s+(?:or\s+record\s+)?(?:your\s+)?(?:initial\s+)?customer\s+orders)\b/i.test(lowerReply)
+  ) {
+    hasRepeatedQuestion = true;
+    issues.push('Repeated question: Asked what platform or tool is used to receive orders when customer already answered.');
   }
 
   // 7. Stale Topic Resurrection Detection (Step 6)

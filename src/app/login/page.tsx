@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Bot, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,21 +53,12 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute inset-0 bg-radial-[circle_at_50%_10%] from-indigo-950/30 via-slate-950 to-slate-950 pointer-events-none" />
+      <div className="absolute inset-0 bg-radial-[circle_at_50%_10%] from-[#152644]/40 via-slate-950 to-slate-950 pointer-events-none" />
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <Link
-          href="/"
-          aria-label="Go to FillFlow home"
-          className="flex items-center justify-center gap-2.5 mb-6 group focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-0.5"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
-            <Bot className="h-6 w-6" />
-          </div>
-          <span className="font-bold text-xl text-white tracking-tight">
-            Fill<span className="text-indigo-400">Flow</span>
-          </span>
-        </Link>
+        <div className="flex justify-center mb-6">
+          <Logo variant="full" size="lg" href="/" />
+        </div>
         <h2 className="text-center text-2xl font-bold tracking-tight text-white">
           Sign in to your company
         </h2>
