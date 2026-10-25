@@ -41,18 +41,17 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const redirectUri =
+    const rawClientId = process.env.GOOGLE_CLIENT_ID || '';
+    const clientId = rawClientId.trim().replace(/^["']|["']$/g, '');
+    const rawRedirectUri =
       process.env.GOOGLE_REDIRECT_URI || `${url.origin}/api/integrations/google/callback`;
+    const redirectUri = rawRedirectUri.trim().replace(/^["']|["']$/g, '');
 
-    if (!clientId) {
-      // If client ID is missing in development, allow simulated redirection for testing
-      const isDev = process.env.NODE_ENV !== 'production';
-      if (isDev && url.searchParams.get('simulated') === 'true') {
-        const simulatedCallbackUrl = `${redirectUri}?code=simulated-auth-code&state=simulated-state`;
-        return NextResponse.redirect(simulatedCallbackUrl);
-      }
+    const isSimulated =
+      process.env.NODE_ENV !== 'production' &&
+      (clientId === 'simulated' || !clientId || url.searchParams.get('simulated') === 'true');
 
+    if (!clientId && !isSimulated) {
       return NextResponse.json(
         {
           success: false,
@@ -60,6 +59,22 @@ export async function GET(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    if (!isSimulated && !/^\d+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(clientId)) {
+      console.error(`[Google OAuth Start] Malformed GOOGLE_CLIENT_ID: "${clientId.slice(0, 5)}..." (len: ${clientId.length})`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Google OAuth client ID is malformed or incomplete. Please ensure GOOGLE_CLIENT_ID is properly configured in your .env file.',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (isSimulated && url.searchParams.get('simulated') === 'true') {
+      const simulatedCallbackUrl = `${redirectUri}?code=simulated-auth-code&state=simulated-state`;
+      return NextResponse.redirect(simulatedCallbackUrl);
     }
 
     const requestedReturnTo = url.searchParams.get('returnTo');
@@ -102,7 +117,12 @@ export async function GET(request: NextRequest) {
     authUrl.searchParams.set('response_type', 'code');
     authUrl.searchParams.set('scope', scopes.join(' '));
     authUrl.searchParams.set('access_type', 'offline'); // Required to obtain refresh_token
-    authUrl.searchParams.set('prompt', 'consent select_account'); // Ensures refresh token is re-issued and account/consent prompted
+    const requestedPrompt = url.searchParams.get('prompt');
+    const promptValue =
+      requestedPrompt === 'select_account' || requestedPrompt === 'consent'
+        ? requestedPrompt
+        : 'consent select_account';
+    authUrl.searchParams.set('prompt', promptValue); // Ensures refresh token is re-issued and account/consent prompted
     authUrl.searchParams.set('state', stateToken);
 
     if (url.searchParams.get('json') === 'true') {

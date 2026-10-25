@@ -390,13 +390,15 @@ export function evaluatePermissionAndRisk(
   // F. Pricing & Budget Commitments
   const hasPricingCommitment =
     PRICING_COMMITMENT_PATTERNS.some((p) => p.test(lower)) ||
+    /\b(?:budget\s+(?:is|of|around|estimated\s+at)?\s*[₹$€£]|estimated\s+budget\s+(?:is|of)?\s*[₹$€£]|budget:\s*[₹$€£]|\b[₹$€£]\s*[\d,]+\s*(?:–|-|\s*to\s*)\s*[₹$€£]?\s*[\d,]+)/i.test(lower) ||
     (intent === 'pricing_request' && /\b(?:exact|fixed|quote|confirm|guarantee)\b/i.test(lower)) ||
     /\b(?:budget\s+(?:has\s+)?changed\s+to|change(?:d)?\s+budget\s+to)\b/i.test(lower) ||
+    Boolean(structuredContext?.facts?.budget) ||
     (structuredContext?.currentTurnRequirements?.some((r) => r.type === 'budget_change') ?? false);
 
   if (hasPricingCommitment) {
     restrictedTopics.push('pricing_commitment');
-    reasons.push('Customer requested a fixed/exact price confirmation or changed project budget.');
+    reasons.push('Customer requested a fixed/exact price confirmation, specified a project budget, or changed budget.');
   }
 
   // G. Discounts
@@ -444,10 +446,14 @@ export function evaluatePermissionAndRisk(
   }
 
   // K. Delivery Deadlines
-  const hasDeliveryDeadline = DELIVERY_DEADLINE_PATTERNS.some((p) => p.test(lower));
+  const hasDeliveryDeadline =
+    DELIVERY_DEADLINE_PATTERNS.some((p) => p.test(lower)) ||
+    /\b(?:complete\s+(?:the\s+project\s+)?within\s+\d+|timeline\s+(?:is|of)?\s*\d+|within\s+\d+\s*(?:–|-|\s*to\s*)?\s*\d*\s*(?:weeks?|months?|days?))\b/i.test(lower) ||
+    Boolean(structuredContext?.facts?.timeline);
+
   if (hasDeliveryDeadline) {
     restrictedTopics.push('delivery_deadline_guarantee');
-    reasons.push('Customer requested a firm delivery deadline or completion guarantee.');
+    reasons.push('Customer requested a firm delivery deadline, specified a timeline, or completion schedule.');
   }
 
   // L. SLAs

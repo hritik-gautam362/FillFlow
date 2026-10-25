@@ -267,7 +267,11 @@ export async function tryAcquireEmailMessageLease(
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       UPDATE "AutomationConnection"
       SET "metadata" = jsonb_set(
-        COALESCE("metadata"::jsonb, '{}'::jsonb),
+        CASE
+          WHEN (COALESCE("metadata"::jsonb, '{}'::jsonb))->'processedEmailIds' IS NULL
+          THEN COALESCE("metadata"::jsonb, '{}'::jsonb) || '{"processedEmailIds": {}}'::jsonb
+          ELSE COALESCE("metadata"::jsonb, '{}'::jsonb)
+        END,
         ARRAY['processedEmailIds', ${messageId}],
         ${entryPayload}::jsonb,
         true
@@ -495,7 +499,11 @@ export async function recordEmailMessageStatusInConnection(
     const rows = await prisma.$queryRaw<Array<{ id: string }>>`
       UPDATE "AutomationConnection"
       SET "metadata" = jsonb_set(
-        COALESCE("metadata"::jsonb, '{}'::jsonb),
+        CASE
+          WHEN (COALESCE("metadata"::jsonb, '{}'::jsonb))->'processedEmailIds' IS NULL
+          THEN COALESCE("metadata"::jsonb, '{}'::jsonb) || '{"processedEmailIds": {}}'::jsonb
+          ELSE COALESCE("metadata"::jsonb, '{}'::jsonb)
+        END,
         ARRAY['processedEmailIds', ${messageId}],
         ${entryPayload}::jsonb,
         true
@@ -558,6 +566,7 @@ export async function isMessageAlreadyProcessed(
   // Check if an agent reply was sent for this message, or if it was recorded as processed
   const existingChatMessage = await prisma.chatMessage.findFirst({
     where: {
+      ...(companyId ? { lead: { companyId } } : {}),
       OR: [
         {
           sender: MessageSender.agent,
@@ -694,7 +703,7 @@ export async function hasOutboundReplyAlreadyBeenSent(
       });
       const meta = (conn?.metadata as Record<string, unknown>) || {};
       const processedMap = (meta.processedEmailIds as Record<string, { status?: string }>) || {};
-      if (processedMap[gmailMsgId]?.status === 'processed' || processedMap[emailMsgId]?.status === 'processed') {
+      if (processedMap[gmailMsgId]?.status === 'replied' || processedMap[emailMsgId]?.status === 'replied') {
         completedEmailMessageIds.add(gmailMsgId);
         completedEmailMessageIds.add(emailMsgId);
         return true;
@@ -800,17 +809,32 @@ export async function resolveCompanyForInboundEmail(
   // 3. Recipient address matching AutomationConnection
   const recipient = inbound.recipient.toLowerCase().trim();
 
-  const matchedConnection = await prisma.automationConnection.findFirst({
-    where: {
-      automationType: AutomationType.email,
-      OR: [
-        { displayName: recipient },
-        { metadata: { path: ['inboundEmail'], equals: recipient } },
-        { metadata: { path: ['forwardingAddress'], equals: recipient } },
-        { metadata: { path: ['googleEmail'], equals: recipient } },
-      ],
-    },
-  });
+  const matchedConnection =
+    (await prisma.automationConnection.findFirst({
+      where: {
+        automationType: AutomationType.email,
+        status: ConnectionStatus.connected,
+        OR: [
+          { displayName: recipient },
+          { metadata: { path: ['inboundEmail'], equals: recipient } },
+          { metadata: { path: ['forwardingAddress'], equals: recipient } },
+          { metadata: { path: ['googleEmail'], equals: recipient } },
+        ],
+      },
+      orderBy: { connectedAt: 'desc' },
+    })) ||
+    (await prisma.automationConnection.findFirst({
+      where: {
+        automationType: AutomationType.email,
+        OR: [
+          { displayName: recipient },
+          { metadata: { path: ['inboundEmail'], equals: recipient } },
+          { metadata: { path: ['forwardingAddress'], equals: recipient } },
+          { metadata: { path: ['googleEmail'], equals: recipient } },
+        ],
+      },
+      orderBy: { connectedAt: 'desc' },
+    }));
 
   if (matchedConnection?.companyId) {
     return { companyId: matchedConnection.companyId };

@@ -491,22 +491,37 @@ export function generateContextualFallback(
   ) {
     const greeting = hasActiveThreadHistory ? 'Thanks for following up' : `Thanks for reaching out to ${companyName}`;
     const connectsToCall = lowerMsg.includes('call') || lowerMsg.includes('schedule') || hasActiveThreadHistory;
+    const hasKnownFeatures = (baseReq.features && baseReq.features.length > 0) || (structuredContext.facts.features && structuredContext.facts.features.length > 0);
+    const isWebsiteInquiry = lowerMsg.includes('website') || baseReq.projectType?.toLowerCase().includes('website');
 
     const servicesText = (companyContext?.services || []).join(' ').toLowerCase();
-    const hasCapability = servicesText.includes('software') || servicesText.includes('app') || servicesText.includes('development') || servicesText.includes('custom');
+    const hasCapability = servicesText.includes('software') || servicesText.includes('app') || servicesText.includes('development') || servicesText.includes('custom') || servicesText.includes('web');
 
     const capabilityText = hasCapability
       ? `Yes, we specialize in modern custom software and application development, including cross-platform mobile apps and web platforms.`
       : `We provide custom engineering and digital development services tailored to your technical requirements.`;
 
-    const nextStep = connectsToCall
-      ? `We would be happy to discuss your mobile app architecture and platform requirements during our upcoming call.`
-      : `Could you share what core features or target platforms (iOS, Android, or web) you are planning for this project?`;
+    let nextStep: string;
+    if (connectsToCall) {
+      nextStep = isWebsiteInquiry
+        ? `We would be happy to discuss your website requirements and design preferences during our upcoming call.`
+        : `We would be happy to discuss your mobile app architecture and platform requirements during our upcoming call.`;
+    } else if (hasKnownFeatures || isWebsiteInquiry) {
+      const featureList = baseReq.features.length > 0 ? baseReq.features : structuredContext.facts.features;
+      const featureSummary = featureList.length > 0 ? ` including ${featureList.slice(0, 4).join(', ')}` : '';
+      nextStep = `We have noted your requirements${featureSummary}. To help us finalize the roadmap, could you share if you have existing brand assets or design references, or if we should factor branding into the scope as well?`;
+    } else {
+      nextStep = `Could you share what core features or target platforms (iOS, Android, or web) you are planning for this project?`;
+    }
 
     replyText = `Hi,\n\n${greeting}. ${capabilityText}\n\n${nextStep}\n\nBest regards,\n${companyName}`;
-    nextQuestion = connectsToCall ? null : 'Could you share what core features or target platforms you are planning for this project?';
-    clientQuestionAnswered = 'Addressed mobile and custom engineering capabilities';
-    baseReq.projectType = baseReq.projectType || 'Mobile Application Development';
+    nextQuestion = connectsToCall
+      ? null
+      : hasKnownFeatures || isWebsiteInquiry
+      ? 'Could you share if you have existing brand assets or design references, or if we should factor branding into the scope as well?'
+      : 'Could you share what core features or target platforms you are planning for this project?';
+    clientQuestionAnswered = 'Addressed engineering and development capabilities';
+    baseReq.projectType = baseReq.projectType || (isWebsiteInquiry ? 'Modern Business Website' : 'Mobile Application Development');
   }
   // Response Branch 3: Customer Support & Technical Issues
   else if (cleanIntent.includes('support') || /\b(having (?:an? )?(?:issue|problem|bug|trouble|error)|account (?:is )?locked|unable to log in|can't log in|cannot log in|system is down|technical support)\b/i.test(lowerMsg)) {

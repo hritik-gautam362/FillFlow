@@ -123,6 +123,7 @@ export async function handleGooglePubSubWebhook(params: {
         { metadata: { path: ['googleEmail'], equals: normalizedEmail } },
       ],
     },
+    orderBy: { connectedAt: 'desc' },
   });
 
   if (!connection) {

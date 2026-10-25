@@ -504,9 +504,8 @@ export default function CompanySettingsPage() {
                       />
                       <label
                         htmlFor={`day-${key}`}
-                        className={`text-xs font-medium cursor-pointer ${
-                          dayConfig.open ? 'text-white' : 'text-slate-500'
-                        }`}
+                        className={`text-xs font-medium cursor-pointer ${dayConfig.open ? 'text-white' : 'text-slate-500'
+                          }`}
                       >
                         {label}
                       </label>

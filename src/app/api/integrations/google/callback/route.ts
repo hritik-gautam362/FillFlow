@@ -93,10 +93,11 @@ export async function GET(request: NextRequest) {
   }
 
   // 2. Exchange authorization code for tokens
-  const clientId = process.env.GOOGLE_CLIENT_ID || '';
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
-  const redirectUri =
-    process.env.GOOGLE_REDIRECT_URI || `${url.origin}/api/integrations/google/callback`;
+  const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, '');
+  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, '');
+  const redirectUri = (
+    process.env.GOOGLE_REDIRECT_URI || `${url.origin}/api/integrations/google/callback`
+  ).trim().replace(/^["']|["']$/g, '');
 
   let accessToken = '';
   let refreshToken = '';
@@ -249,6 +250,23 @@ export async function GET(request: NextRequest) {
         watchStatus: requiresReauth ? 'error' : ((existingMeta.watchStatus as string) || 'pending'),
         watchError: requiresReauth ? reauthReason : ((existingMeta.watchError as string) || null),
         connectedAt: new Date().toISOString(),
+      },
+    });
+
+    // Ensure tenant isolation: Disconnect any prior connection for this Google mailbox under any other company
+    await prisma.automationConnection.updateMany({
+      where: {
+        automationType: AutomationType.email,
+        companyId: { not: companyId },
+        OR: [
+          ...(googleUserId ? [{ externalId: googleUserId }] : []),
+          { displayName: { equals: googleEmail, mode: 'insensitive' as const } },
+          { metadata: { path: ['googleEmail'], equals: googleEmail } },
+        ],
+      },
+      data: {
+        status: ConnectionStatus.disconnected,
+        disconnectedAt: new Date(),
       },
     });
   } catch (dbErr) {

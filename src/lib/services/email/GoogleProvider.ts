@@ -59,9 +59,9 @@ export class GoogleProvider implements EmailProvider {
         process.env.GOOGLE_CLIENT_ID === 'simulated');
 
     this.config = {
-      clientId: config?.clientId || process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: config?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || '',
-      redirectUri: config?.redirectUri || process.env.GOOGLE_REDIRECT_URI || '',
+      clientId: (config?.clientId || process.env.GOOGLE_CLIENT_ID || '').trim().replace(/^["']|["']$/g, ''),
+      clientSecret: (config?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || '').trim().replace(/^["']|["']$/g, ''),
+      redirectUri: (config?.redirectUri || process.env.GOOGLE_REDIRECT_URI || '').trim().replace(/^["']|["']$/g, ''),
       ...config,
       simulated: isSimulated,
     };

@@ -327,8 +327,8 @@ export default function EmailAutomationPage() {
   const activeProviderName = isGoogleConnected
     ? 'Google'
     : isMailgunConnected
-    ? 'Mailgun'
-    : null;
+      ? 'Mailgun'
+      : null;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -356,11 +356,10 @@ export default function EmailAutomationPage() {
                 </h1>
                 <Badge
                   variant="outline"
-                  className={`text-[11px] font-mono ${
-                    activeProviderName
+                  className={`text-[11px] font-mono ${activeProviderName
                       ? 'border-indigo-500/30 text-indigo-300 bg-indigo-950/40'
                       : 'border-slate-700 text-slate-400 bg-slate-900'
-                  }`}
+                    }`}
                 >
                   Provider: {activeProviderName || 'Not Connected'}
                 </Badge>
@@ -386,27 +385,26 @@ export default function EmailAutomationPage() {
             {/* Connection Status Badge */}
             {isAccessActive && (
               <span
-                className={`text-xs px-2.5 py-1 rounded-md border font-medium ${
-                  connectionStatus === 'connected'
+                className={`text-xs px-2.5 py-1 rounded-md border font-medium ${connectionStatus === 'connected'
                     ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30'
                     : connectionStatus === 'pending'
-                    ? 'bg-sky-950/40 text-sky-400 border-sky-500/30'
-                    : connectionStatus === 'disconnected'
-                    ? 'bg-slate-900 text-slate-400 border-slate-700'
-                    : connectionStatus === 'error'
-                    ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
-                    : 'bg-amber-950/40 text-amber-400 border-amber-500/30'
-                }`}
+                      ? 'bg-sky-950/40 text-sky-400 border-sky-500/30'
+                      : connectionStatus === 'disconnected'
+                        ? 'bg-slate-900 text-slate-400 border-slate-700'
+                        : connectionStatus === 'error'
+                          ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+                          : 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                  }`}
               >
                 {connectionStatus === 'connected'
                   ? 'Connected'
                   : connectionStatus === 'pending'
-                  ? 'Connecting'
-                  : connectionStatus === 'disconnected'
-                  ? 'Disconnected'
-                  : connectionStatus === 'error'
-                  ? 'Connection Error'
-                  : 'Not Connected'}
+                    ? 'Connecting'
+                    : connectionStatus === 'disconnected'
+                      ? 'Disconnected'
+                      : connectionStatus === 'error'
+                        ? 'Connection Error'
+                        : 'Not Connected'}
               </span>
             )}
           </div>
@@ -504,9 +502,8 @@ export default function EmailAutomationPage() {
             <div className="flex items-center gap-3">
               <div className="w-28 bg-slate-800 rounded-full h-2 overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${
-                    emailQuota.usagePercentage >= 80 ? 'bg-amber-500' : 'bg-indigo-500'
-                  }`}
+                  className={`h-full rounded-full transition-all ${emailQuota.usagePercentage >= 80 ? 'bg-amber-500' : 'bg-indigo-500'
+                    }`}
                   style={{ width: `${emailQuota.usagePercentage}%` }}
                 />
               </div>
@@ -545,11 +542,10 @@ export default function EmailAutomationPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab('google')}
-                className={`text-xs px-3.5 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
-                  activeTab === 'google'
+                className={`text-xs px-3.5 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'google'
                     ? 'bg-indigo-600/20 border border-indigo-500/40 text-indigo-300'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
+                  }`}
               >
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
                   <path
@@ -575,11 +571,10 @@ export default function EmailAutomationPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab('mailgun')}
-                className={`text-xs px-3.5 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${
-                  activeTab === 'mailgun'
+                className={`text-xs px-3.5 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'mailgun'
                     ? 'bg-purple-600/20 border border-purple-500/40 text-purple-300'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                }`}
+                  }`}
               >
                 <Server className="h-3.5 w-3.5 text-purple-400" />
                 Mailgun Inbound Routing {isMailgunConnected && '✓'}
@@ -672,11 +667,10 @@ export default function EmailAutomationPage() {
                         <div className="flex items-center gap-2">
                           <Badge
                             variant="outline"
-                            className={`text-[10px] font-mono ${
-                              watchStatus === 'active'
+                            className={`text-[10px] font-mono ${watchStatus === 'active'
                                 ? 'border-emerald-500/30 text-emerald-400 bg-emerald-950/40'
                                 : 'border-amber-500/30 text-amber-400 bg-amber-950/40'
-                            }`}
+                              }`}
                           >
                             Watch: {watchStatus === 'active' ? 'Active (Event-driven)' : watchStatus || 'Ready'}
                           </Badge>
@@ -824,9 +818,8 @@ export default function EmailAutomationPage() {
                   <Card className="p-3.5 border-slate-800 bg-slate-900/80">
                     <span className="text-[11px] text-slate-400 block mb-1">Automation Status</span>
                     <div
-                      className={`text-sm font-semibold flex items-center gap-1 ${
-                        isMailgunConnected ? 'text-emerald-400' : 'text-slate-400'
-                      }`}
+                      className={`text-sm font-semibold flex items-center gap-1 ${isMailgunConnected ? 'text-emerald-400' : 'text-slate-400'
+                        }`}
                     >
                       <Radio className={`h-3.5 w-3.5 ${isMailgunConnected ? 'animate-pulse' : ''}`} />
                       {isMailgunConnected ? 'Active & Ready' : 'Not Connected'}
@@ -876,8 +869,8 @@ export default function EmailAutomationPage() {
                           {connecting
                             ? 'Saving...'
                             : isMailgunConnected
-                            ? 'Update Sender'
-                            : 'Connect Mailgun'}
+                              ? 'Update Sender'
+                              : 'Connect Mailgun'}
                         </Button>
 
                         {isMailgunConnected && (

@@ -134,11 +134,10 @@ export function AutomationAccessOverview({ companyId }: AutomationAccessOverview
           return (
             <Card
               key={cfg.type}
-              className={`p-5 border transition-all flex flex-col justify-between ${
-                isAccessActive
+              className={`p-5 border transition-all flex flex-col justify-between ${isAccessActive
                   ? 'border-slate-800 bg-slate-900/90 shadow-lg shadow-indigo-950/10'
                   : 'border-slate-800/60 bg-slate-950/60 opacity-80'
-              }`}
+                }`}
             >
               <div>
                 {/* Header: Icon + Badges */}

@@ -28,6 +28,11 @@ import {
   ArrowRight,
   Mail,
   Hash,
+  Search,
+  SlidersHorizontal,
+  Filter,
+  Calendar,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatDateTime, formatTime } from '@/lib/formatters';
 
@@ -73,6 +78,180 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
   const [itemToReopen, setItemToReopen] = React.useState<AiApprovalItem | null>(null);
   const [isReopening, setIsReopening] = React.useState(false);
   const [reopenSuccess, setReopenSuccess] = React.useState<string | null>(null);
+
+  // Search and More Filters state
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [isMoreFiltersOpen, setIsMoreFiltersOpen] = React.useState(false);
+  const [riskFilter, setRiskFilter] = React.useState<'ALL' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('ALL');
+  const [intentFilter, setIntentFilter] = React.useState<string>('ALL');
+  const [dateRangeFilter, setDateRangeFilter] = React.useState<'ALL' | 'TODAY' | 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'CUSTOM'>('ALL');
+  const [customStartDate, setCustomStartDate] = React.useState('');
+  const [customEndDate, setCustomEndDate] = React.useState('');
+  const [restrictedTopicOnly, setRestrictedTopicOnly] = React.useState(false);
+  const [restrictedTopicFilter, setRestrictedTopicFilter] = React.useState<string>('ALL');
+  const [sortBy, setSortBy] = React.useState<'newest' | 'oldest' | 'highest_risk'>('newest');
+
+  const moreFiltersRef = React.useRef<HTMLDivElement>(null);
+
+  // Close More Filters dropdown on click outside
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (moreFiltersRef.current && !moreFiltersRef.current.contains(event.target as Node)) {
+        setIsMoreFiltersOpen(false);
+      }
+    }
+    if (isMoreFiltersOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMoreFiltersOpen]);
+
+  // Extract available intents and restricted topics from loaded items
+  const availableIntents = React.useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((it) => {
+      if (it.intent) set.add(it.intent);
+    });
+    return Array.from(set).sort();
+  }, [items]);
+
+  const availableRestrictedTopics = React.useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((it) => {
+      if (Array.isArray(it.restrictedTopics)) {
+        it.restrictedTopics.forEach((t) => set.add(t));
+      }
+    });
+    return Array.from(set).sort();
+  }, [items]);
+
+  const activeFiltersCount = React.useMemo(() => {
+    let count = 0;
+    if (riskFilter !== 'ALL') count++;
+    if (intentFilter !== 'ALL') count++;
+    if (dateRangeFilter !== 'ALL') count++;
+    if (restrictedTopicOnly) count++;
+    if (restrictedTopicFilter !== 'ALL') count++;
+    if (sortBy !== 'newest') count++;
+    return count;
+  }, [riskFilter, intentFilter, dateRangeFilter, restrictedTopicOnly, restrictedTopicFilter, sortBy]);
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setRiskFilter('ALL');
+    setIntentFilter('ALL');
+    setDateRangeFilter('ALL');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setRestrictedTopicOnly(false);
+    setRestrictedTopicFilter('ALL');
+    setSortBy('newest');
+  };
+
+  // Filter and sort items according to search, risk, intent, date range, restricted topics, and sort order
+  const filteredItems = React.useMemo(() => {
+    let res = [...items];
+
+    // Search query across customer name, email, company, subject, message
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      res = res.filter((item) => {
+        const name = item.customerName?.toLowerCase() || '';
+        const email = item.customerEmail?.toLowerCase() || '';
+        const company = item.customerCompanyName?.toLowerCase() || '';
+        const subject = item.subject?.toLowerCase() || '';
+        const message = item.latestCustomerMessage?.toLowerCase() || '';
+        return name.includes(q) || email.includes(q) || company.includes(q) || subject.includes(q) || message.includes(q);
+      });
+    }
+
+    // Risk filter
+    if (riskFilter !== 'ALL') {
+      res = res.filter((item) => item.riskLevel === riskFilter);
+    }
+
+    // Topic / Intent filter
+    if (intentFilter !== 'ALL') {
+      res = res.filter((item) => (item.intent || '').toLowerCase() === intentFilter.toLowerCase());
+    }
+
+    // Restricted topics filter
+    if (restrictedTopicOnly) {
+      res = res.filter((item) => Array.isArray(item.restrictedTopics) && item.restrictedTopics.length > 0);
+    }
+    if (restrictedTopicFilter !== 'ALL') {
+      res = res.filter(
+        (item) =>
+          Array.isArray(item.restrictedTopics) &&
+          item.restrictedTopics.some((t) => t.toLowerCase() === restrictedTopicFilter.toLowerCase())
+      );
+    }
+
+    // Date Range
+    if (dateRangeFilter !== 'ALL') {
+      const now = Date.now();
+      res = res.filter((item) => {
+        const itemTime = new Date(item.createdAt).getTime();
+        if (isNaN(itemTime)) return true;
+
+        if (dateRangeFilter === 'TODAY') {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          return itemTime >= today.getTime();
+        }
+        if (dateRangeFilter === 'LAST_7_DAYS') {
+          return itemTime >= now - 7 * 24 * 60 * 60 * 1000;
+        }
+        if (dateRangeFilter === 'LAST_30_DAYS') {
+          return itemTime >= now - 30 * 24 * 60 * 60 * 1000;
+        }
+        if (dateRangeFilter === 'CUSTOM') {
+          if (customStartDate) {
+            const start = new Date(customStartDate);
+            start.setHours(0, 0, 0, 0);
+            if (!isNaN(start.getTime()) && itemTime < start.getTime()) return false;
+          }
+          if (customEndDate) {
+            const end = new Date(customEndDate);
+            end.setHours(23, 59, 59, 999);
+            if (!isNaN(end.getTime()) && itemTime > end.getTime()) return false;
+          }
+          return true;
+        }
+        return true;
+      });
+    }
+
+    // Sort
+    res.sort((a, b) => {
+      if (sortBy === 'oldest') {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === 'highest_risk') {
+        const riskRank: Record<string, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+        const diff = (riskRank[b.riskLevel] || 0) - (riskRank[a.riskLevel] || 0);
+        if (diff !== 0) return diff;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      // default: newest
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return res;
+  }, [
+    items,
+    searchQuery,
+    riskFilter,
+    intentFilter,
+    restrictedTopicOnly,
+    restrictedTopicFilter,
+    dateRangeFilter,
+    customStartDate,
+    customEndDate,
+    sortBy,
+  ]);
 
   const fetchItems = React.useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -680,6 +859,394 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
         </div>
       )}
 
+      {/* Search Bar & More Filters Control */}
+      <div className="space-y-2.5">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by customer name, email, subject, or message content..."
+              className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-9 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-300 rounded"
+                title="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* More Filters Button + Dropdown Container */}
+          <div className="relative" ref={moreFiltersRef}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsMoreFiltersOpen((prev) => !prev)}
+              className={`h-9 px-3 text-xs font-medium border flex items-center justify-between sm:justify-start gap-1.5 transition-colors ${
+                activeFiltersCount > 0 || isMoreFiltersOpen
+                  ? 'border-indigo-500/50 bg-indigo-950/40 text-indigo-300 shadow-sm shadow-indigo-950/50'
+                  : 'border-slate-800 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5 text-indigo-400" />
+                <span>More Filters</span>
+                {activeFiltersCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-600 text-white leading-tight">
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </div>
+              <ChevronDown
+                className={`h-3 w-3 ml-0.5 text-slate-400 transition-transform duration-200 ${
+                  isMoreFiltersOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </Button>
+
+            {/* Dropdown Popover */}
+            {isMoreFiltersOpen && (
+              <div className="absolute right-0 mt-2 z-30 w-80 sm:w-96 p-4 rounded-xl border border-slate-800 bg-slate-950 shadow-2xl shadow-black/80 space-y-4 animate-in fade-in zoom-in-95">
+                {/* Popover Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="h-4 w-4 text-indigo-400" />
+                    <span className="text-xs font-semibold text-slate-200">Filter &amp; Sort Approvals</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {activeFiltersCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearAllFilters}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsMoreFiltersOpen(false)}
+                      className="text-slate-400 hover:text-white p-0.5 rounded"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter Section: Risk */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Risk Level
+                  </label>
+                  <div className="grid grid-cols-5 gap-1 text-[11px]">
+                    {(['ALL', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRiskFilter(r)}
+                        className={`py-1 px-1.5 rounded border text-center transition-colors font-medium truncate ${
+                          riskFilter === r
+                            ? r === 'CRITICAL'
+                              ? 'bg-purple-900/60 border-purple-500/60 text-purple-200'
+                              : r === 'HIGH'
+                              ? 'bg-red-900/60 border-red-500/60 text-red-200'
+                              : r === 'MEDIUM'
+                              ? 'bg-amber-900/60 border-amber-500/60 text-amber-200'
+                              : r === 'LOW'
+                              ? 'bg-emerald-900/60 border-emerald-500/60 text-emerald-200'
+                              : 'bg-indigo-600 border-indigo-500 text-white'
+                            : 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        {r === 'ALL' ? 'All' : r.charAt(0) + r.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Filter Section: Topic / Intent */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Topic / Intent
+                  </label>
+                  <select
+                    value={intentFilter}
+                    onChange={(e) => setIntentFilter(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="ALL">All Topics &amp; Intents</option>
+                    {availableIntents.map((intent) => (
+                      <option key={intent} value={intent}>
+                        {intent.replace(/_/g, ' ').toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter Section: Date Range */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-slate-500" /> Date Range
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 text-[11px]">
+                    {([
+                      { id: 'ALL' as const, label: 'All Time' },
+                      { id: 'TODAY' as const, label: 'Today' },
+                      { id: 'LAST_7_DAYS' as const, label: 'Last 7 Days' },
+                      { id: 'LAST_30_DAYS' as const, label: 'Last 30 Days' },
+                      { id: 'CUSTOM' as const, label: 'Custom' },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setDateRangeFilter(opt.id)}
+                        className={`py-1 px-1.5 rounded border text-center transition-colors font-medium ${
+                          dateRangeFilter === opt.id
+                            ? 'bg-indigo-600 border-indigo-500 text-white'
+                            : 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {dateRangeFilter === 'CUSTOM' && (
+                    <div className="grid grid-cols-2 gap-2 pt-1 animate-in fade-in">
+                      <div>
+                        <span className="text-[9px] text-slate-500 block mb-0.5">Start Date</span>
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-slate-500 block mb-0.5">End Date</span>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Filter Section: Restricted Topics */}
+                <div className="space-y-1.5 pt-0.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Restricted Topics
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={restrictedTopicOnly}
+                        onChange={(e) => setRestrictedTopicOnly(e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0 focus:ring-offset-0 h-3.5 w-3.5"
+                      />
+                      <span className="text-[11px] text-slate-300">Only restricted</span>
+                    </label>
+                  </div>
+
+                  {availableRestrictedTopics.length > 0 && (
+                    <select
+                      value={restrictedTopicFilter}
+                      onChange={(e) => setRestrictedTopicFilter(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 mt-1"
+                    >
+                      <option value="ALL">Any Restricted Topic</option>
+                      {availableRestrictedTopics.map((topic) => (
+                        <option key={topic} value={topic}>
+                          {topic}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Filter Section: Sort By */}
+                <div className="space-y-1.5 pt-0.5 border-t border-slate-800/80 pt-2.5">
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    Sort By
+                  </label>
+                  <div className="grid grid-cols-3 gap-1 text-[11px]">
+                    {([
+                      { id: 'newest' as const, label: 'Newest' },
+                      { id: 'oldest' as const, label: 'Oldest' },
+                      { id: 'highest_risk' as const, label: 'Highest Risk' },
+                    ]).map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSortBy(s.id)}
+                        className={`py-1 px-1.5 rounded border text-center transition-colors font-medium ${
+                          sortBy === s.id
+                            ? 'bg-indigo-600 border-indigo-500 text-white'
+                            : 'border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Popover Footer */}
+                <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                  <span className="text-[11px] text-slate-500">
+                    Matches: <strong className="text-slate-300">{filteredItems.length}</strong> of {items.length}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => setIsMoreFiltersOpen(false)}
+                    className="h-7 px-3 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Active Filter Chips / Badges Row */}
+        {(searchQuery.trim() || activeFiltersCount > 0) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800 animate-in fade-in">
+            <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 mr-0.5">
+              <Filter className="h-3 w-3" /> Filters:
+            </span>
+
+            {searchQuery.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700 font-mono">
+                Search: &quot;{searchQuery}&quot;
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="hover:text-white"
+                  title="Remove search filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {riskFilter !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700">
+                Risk: {riskFilter}
+                <button
+                  type="button"
+                  onClick={() => setRiskFilter('ALL')}
+                  className="hover:text-white"
+                  title="Remove risk filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {intentFilter !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700">
+                Topic: {intentFilter.replace(/_/g, ' ').toUpperCase()}
+                <button
+                  type="button"
+                  onClick={() => setIntentFilter('ALL')}
+                  className="hover:text-white"
+                  title="Remove topic filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {dateRangeFilter !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700">
+                Date: {dateRangeFilter === 'TODAY' ? 'Today' : dateRangeFilter === 'LAST_7_DAYS' ? 'Last 7 Days' : dateRangeFilter === 'LAST_30_DAYS' ? 'Last 30 Days' : 'Custom'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateRangeFilter('ALL');
+                    setCustomStartDate('');
+                    setCustomEndDate('');
+                  }}
+                  className="hover:text-white"
+                  title="Remove date filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {restrictedTopicOnly && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-950/40 text-red-300 text-[11px] border border-red-500/30">
+                Restricted Topics Only
+                <button
+                  type="button"
+                  onClick={() => setRestrictedTopicOnly(false)}
+                  className="hover:text-white"
+                  title="Remove restricted filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {restrictedTopicFilter !== 'ALL' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700">
+                Restricted: {restrictedTopicFilter}
+                <button
+                  type="button"
+                  onClick={() => setRestrictedTopicFilter('ALL')}
+                  className="hover:text-white"
+                  title="Remove restricted topic filter"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            {sortBy !== 'newest' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 text-[11px] border border-slate-700">
+                Sort: {sortBy === 'highest_risk' ? 'Highest Risk' : 'Oldest First'}
+                <button
+                  type="button"
+                  onClick={() => setSortBy('newest')}
+                  className="hover:text-white"
+                  title="Reset sort order"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-[11px] text-slate-500 font-mono">
+                Showing {filteredItems.length} of {items.length}
+              </span>
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium hover:underline"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Items List */}
       {loading ? (
         <Card className="p-8 border-slate-800 bg-slate-900/60 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
@@ -719,9 +1286,25 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
             </p>
           </Card>
         )
+      ) : filteredItems.length === 0 ? (
+        <Card className="p-6 border-slate-800 bg-slate-900/40 text-center">
+          <Filter className="h-6 w-6 text-slate-500 mx-auto mb-1.5" />
+          <h3 className="text-xs font-medium text-slate-300">No matching approval items</h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            No approvals match your current search and filter criteria.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={clearAllFilters}
+            className="mt-3 h-7 text-xs border-slate-700 text-slate-300 hover:text-white"
+          >
+            Clear Search &amp; Filters
+          </Button>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
-          {items.map((item) => {
+        <div className="grid grid-cols-1 gap-2.5">
+          {filteredItems.map((item) => {
             const isHigh = item.riskLevel === 'HIGH';
             const isCritical = item.riskLevel === 'CRITICAL';
             const isPending = item.status === 'PENDING';
@@ -729,7 +1312,7 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
             return (
               <Card
                 key={item.id}
-                className={`p-4 border transition-all ${
+                className={`p-3 sm:p-3.5 border transition-all ${
                   isCritical
                     ? 'border-purple-500/30 bg-purple-950/10 hover:border-purple-500/50'
                     : isHigh
@@ -737,30 +1320,34 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                     : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
                 }`}
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  {/* Left Column: Information hierarchy */}
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    {/* Top Meta Line: Sender, Company, Email, Time, Risk, Status */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      {/* Risk Badge */}
                       {isCritical ? (
-                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 font-semibold text-[10px]">
-                          🟣 CRITICAL RISK
+                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/40 font-semibold text-[10px] py-0 px-1.5">
+                          🟣 Critical
                         </Badge>
                       ) : isHigh ? (
-                        <Badge className="bg-red-500/20 text-red-300 border-red-500/40 font-semibold text-[10px]">
-                          🔴 HIGH RISK
+                        <Badge className="bg-red-500/20 text-red-300 border-red-500/40 font-semibold text-[10px] py-0 px-1.5">
+                          🔴 High
+                        </Badge>
+                      ) : item.riskLevel === 'MEDIUM' ? (
+                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold text-[10px] py-0 px-1.5">
+                          🟡 Medium
                         </Badge>
                       ) : (
-                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold text-[10px]">
-                          🟡 MEDIUM RISK
+                        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold text-[10px] py-0 px-1.5">
+                          🟢 Low
                         </Badge>
                       )}
 
-                      <Badge variant="outline" className="text-[10px] border-slate-700 text-slate-300 uppercase">
-                        {item.intent || 'INQUIRY'}
-                      </Badge>
-
+                      {/* Status Badge */}
                       <Badge
                         variant="outline"
-                        className={`text-[10px] ${
+                        className={`text-[10px] py-0 px-1.5 ${
                           item.status === 'PENDING'
                             ? 'border-amber-500/40 text-amber-300 bg-amber-500/10'
                             : item.status === 'APPROVED' || item.status === 'APPROVED_AND_SENT'
@@ -775,94 +1362,91 @@ export function AiApprovalQueueSection({ companyId }: AiApprovalQueueSectionProp
                         {item.status.replace(/_/g, ' ')}
                       </Badge>
 
-                      <span className="text-[11px] text-slate-300 font-medium">
-                        {item.customerName}
+                      {/* Customer Name & Company */}
+                      <span className="font-semibold text-slate-200 truncate">
+                        {item.customerName || 'Anonymous Customer'}
                       </span>
                       {item.customerCompanyName && (
-                        <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
-                          <Building2 className="h-3 w-3 text-slate-500" />
+                        <span className="text-slate-400 font-mono text-[11px] flex items-center gap-0.5 truncate">
+                          <Building2 className="h-3 w-3 text-slate-500 shrink-0" />
                           {item.customerCompanyName}
                         </span>
                       )}
-                      <span className="text-[11px] text-slate-500">
+
+                      {/* Customer Email */}
+                      <span className="text-slate-500 text-[11px] font-mono truncate">
                         &lt;{item.customerEmail}&gt;
+                      </span>
+
+                      {/* Timestamp */}
+                      <span className="text-[10px] text-slate-500 flex items-center gap-1 ml-auto sm:ml-0">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        {formatDateTime(item.createdAt)}
                       </span>
                     </div>
 
-                    <div className="text-xs font-semibold text-slate-200 truncate">
-                      {item.subject}
+                    {/* Middle Line: Subject & Cleanly Truncated Message Preview */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                      <span className="text-xs font-semibold text-slate-200 truncate shrink-0 max-w-xs">
+                        {item.subject}
+                      </span>
+                      <span className="hidden sm:inline text-slate-600">•</span>
+                      <span className="text-[11px] text-slate-400 italic truncate font-mono bg-slate-950/40 px-2 py-0.5 rounded border border-slate-900/80">
+                        &quot;{item.latestCustomerMessage}&quot;
+                      </span>
                     </div>
 
-                    <div className="text-xs text-slate-300 italic bg-slate-950/60 p-2 rounded border border-slate-800/80 font-mono">
-                      &quot;{item.latestCustomerMessage}&quot;
-                    </div>
+                    {/* Bottom Metadata Line: Topic, Restricted Topics, Overrides, Reason snippet */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                      <Badge variant="outline" className="text-[9px] py-0 px-1.5 border-slate-700 text-slate-300 uppercase font-mono">
+                        {item.intent || 'INQUIRY'}
+                      </Badge>
 
-                    <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1.5 pt-0.5">
-                      <span className="text-slate-500 font-semibold">Reason:</span>
-                      <span>{item.whyApprovalRequired?.join('; ') || 'Commercial commitment requires approval.'}</span>
-                    </div>
-
-                    {item.updatedOverrides && item.updatedOverrides.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                        <span className="text-[10px] text-amber-400 font-semibold">Updated Values:</span>
-                        {item.updatedOverrides.map((override, i) => (
-                          <span
-                            key={i}
-                            className="px-1.5 py-0.5 text-[9px] rounded bg-amber-950/40 text-amber-300 border border-amber-500/30 font-mono"
-                          >
-                            {typeof override === 'string' ? override : `${override.field}: ${override.currentValue}`}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {item.restrictedTopics && item.restrictedTopics.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                        <span className="text-[10px] text-slate-500">Restricted Topics:</span>
-                        {item.restrictedTopics.map((topic, i) => (
-                          <span
-                            key={i}
-                            className="px-1.5 py-0.5 text-[9px] rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono"
-                          >
-                            {topic}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
-                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatDateTime(item.createdAt)}
-                    </span>
-
-                    <div className="flex items-center gap-1.5">
-                      {item.status === 'REJECTED' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setItemToReopen(item)}
-                          className="h-8 text-xs font-medium px-2.5 border-amber-500/40 bg-amber-950/20 text-amber-300 hover:bg-amber-900/40 hover:text-amber-200"
-                        >
-                          <RotateCcw className="h-3 w-3 mr-1 text-amber-400" />
-                          Reopen
-                        </Button>
+                      {item.restrictedTopics && item.restrictedTopics.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-950/30 text-red-300 border border-red-500/30 flex items-center gap-1 font-mono">
+                          <AlertTriangle className="h-2.5 w-2.5 text-red-400" />
+                          {item.restrictedTopics.length} Restricted: {item.restrictedTopics.slice(0, 2).join(', ')}{item.restrictedTopics.length > 2 ? '...' : ''}
+                        </span>
                       )}
 
+                      {item.updatedOverrides && item.updatedOverrides.length > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-950/40 text-amber-300 border border-amber-500/30 font-mono">
+                          Overrides ({item.updatedOverrides.length})
+                        </span>
+                      )}
+
+                      <span className="text-slate-500 truncate max-w-sm sm:max-w-md hidden md:inline">
+                        Reason: {item.whyApprovalRequired?.join('; ') || 'Commercial commitment requires approval.'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Actions */}
+                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                    {item.status === 'REJECTED' && (
                       <Button
                         size="sm"
-                        onClick={() => openReviewModal(item)}
-                        className={`h-8 text-xs font-semibold px-3 ${
-                          isPending
-                            ? 'bg-red-600 hover:bg-red-500 text-white'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                        }`}
+                        variant="outline"
+                        onClick={() => setItemToReopen(item)}
+                        className="h-8 text-xs font-medium px-2.5 border-amber-500/40 bg-amber-950/20 text-amber-300 hover:bg-amber-900/40 hover:text-amber-200"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" />
-                        {isPending ? 'Review & Respond' : 'View Details'}
+                        <RotateCcw className="h-3 w-3 mr-1 text-amber-400" />
+                        Reopen
                       </Button>
-                    </div>
+                    )}
+
+                    <Button
+                      size="sm"
+                      onClick={() => openReviewModal(item)}
+                      className={`h-8 text-xs font-semibold px-3 ${
+                        isPending
+                          ? 'bg-red-600 hover:bg-red-500 text-white'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      }`}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" />
+                      {isPending ? 'Review & Respond' : 'View Details'}
+                    </Button>
                   </div>
                 </div>
               </Card>

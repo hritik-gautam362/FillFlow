@@ -441,15 +441,14 @@ export default function AiPlaygroundPage() {
                     </h3>
                     <Badge
                       variant="outline"
-                      className={`font-semibold px-2.5 py-0.5 text-xs ${
-                        result.riskLevel === 'CRITICAL'
+                      className={`font-semibold px-2.5 py-0.5 text-xs ${result.riskLevel === 'CRITICAL'
                           ? 'bg-red-500/10 text-red-400 border-red-500/30'
                           : result.riskLevel === 'HIGH'
-                          ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
-                          : result.riskLevel === 'MEDIUM'
-                          ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
-                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      }`}
+                            ? 'bg-orange-500/10 text-orange-400 border-orange-500/30'
+                            : result.riskLevel === 'MEDIUM'
+                              ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        }`}
                     >
                       Risk: {result.riskLevel}
                     </Badge>
@@ -478,15 +477,14 @@ export default function AiPlaygroundPage() {
                     <div className="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800">
                       <span className="text-slate-500 block mb-0.5">Permission Decision</span>
                       <span
-                        className={`font-semibold ${
-                          result.permissionDecision === 'SAFE_AUTO_REPLY'
+                        className={`font-semibold ${result.permissionDecision === 'SAFE_AUTO_REPLY'
                             ? 'text-emerald-400'
                             : result.permissionDecision === 'NEEDS_APPROVAL'
-                            ? 'text-amber-400'
-                            : result.permissionDecision === 'BLOCKED'
-                            ? 'text-red-400'
-                            : 'text-blue-400'
-                        }`}
+                              ? 'text-amber-400'
+                              : result.permissionDecision === 'BLOCKED'
+                                ? 'text-red-400'
+                                : 'text-blue-400'
+                          }`}
                       >
                         {result.decisionLabel}
                       </span>
@@ -575,11 +573,10 @@ export default function AiPlaygroundPage() {
                     {result.safetyChecks.map((check) => (
                       <div
                         key={check.name}
-                        className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${
-                          check.passed
+                        className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${check.passed
                             ? 'bg-slate-950/60 border-slate-800 text-slate-300'
                             : 'bg-red-950/30 border-red-900/60 text-red-300'
-                        }`}
+                          }`}
                       >
                         {check.passed ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />

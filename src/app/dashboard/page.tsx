@@ -283,10 +283,10 @@ export default function DashboardPage() {
 
         {/* Lead Management Section */}
         <div className="space-y-4">
-          
+
           {/* Search & Filter Toolbar */}
           <Card className="p-4 border-slate-800 bg-slate-900/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            
+
             {/* Search Input */}
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
@@ -307,33 +307,29 @@ export default function DashboardPage() {
               <div className="flex items-center rounded-lg bg-slate-950 p-1 border border-slate-800">
                 <button
                   onClick={() => setChannelFilter('all')}
-                  className={`px-2.5 py-1 rounded-md transition-colors ${
-                    channelFilter === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`px-2.5 py-1 rounded-md transition-colors ${channelFilter === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setChannelFilter('whatsapp')}
-                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${
-                    channelFilter === 'whatsapp' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${channelFilter === 'whatsapp' ? 'bg-emerald-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   <MessageSquare className="h-3 w-3" /> WhatsApp
                 </button>
                 <button
                   onClick={() => setChannelFilter('web_chat')}
-                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${
-                    channelFilter === 'web_chat' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${channelFilter === 'web_chat' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   <Globe className="h-3 w-3" /> Web Chat
                 </button>
                 <button
                   onClick={() => setChannelFilter('email')}
-                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${
-                    channelFilter === 'email' ? 'bg-purple-600 text-white font-medium' : 'text-slate-400 hover:text-white'
-                  }`}
+                  className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1 ${channelFilter === 'email' ? 'bg-purple-600 text-white font-medium' : 'text-slate-400 hover:text-white'
+                    }`}
                 >
                   <Mail className="h-3 w-3" /> Email
                 </button>
@@ -446,13 +442,12 @@ export default function DashboardPage() {
                             <div className="flex items-center gap-2">
                               <div className="w-16 h-2 rounded-full bg-slate-800 overflow-hidden">
                                 <div
-                                  className={`h-full rounded-full ${
-                                    lead.qualificationScore >= 90
+                                  className={`h-full rounded-full ${lead.qualificationScore >= 90
                                       ? 'bg-emerald-500'
                                       : lead.qualificationScore >= 75
-                                      ? 'bg-indigo-500'
-                                      : 'bg-amber-500'
-                                  }`}
+                                        ? 'bg-indigo-500'
+                                        : 'bg-amber-500'
+                                    }`}
                                   style={{ width: `${lead.qualificationScore}%` }}
                                 />
                               </div>

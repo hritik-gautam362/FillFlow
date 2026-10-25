@@ -172,26 +172,25 @@ export default function WhatsAppAutomationPage() {
             )}
 
             {isAccessActive && (
-              <span className={`text-xs px-2.5 py-1 rounded-md border font-medium ${
-                connectionStatus === 'connected'
+              <span className={`text-xs px-2.5 py-1 rounded-md border font-medium ${connectionStatus === 'connected'
                   ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30'
                   : connectionStatus === 'pending'
-                  ? 'bg-sky-950/40 text-sky-400 border-sky-500/30'
-                  : connectionStatus === 'disconnected'
-                  ? 'bg-slate-900 text-slate-400 border-slate-700'
-                  : connectionStatus === 'error'
-                  ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
-                  : 'bg-amber-950/40 text-amber-400 border-amber-500/30'
-              }`}>
+                    ? 'bg-sky-950/40 text-sky-400 border-sky-500/30'
+                    : connectionStatus === 'disconnected'
+                      ? 'bg-slate-900 text-slate-400 border-slate-700'
+                      : connectionStatus === 'error'
+                        ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+                        : 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+                }`}>
                 {connectionStatus === 'connected'
                   ? 'Connected'
                   : connectionStatus === 'pending'
-                  ? 'Pending Setup'
-                  : connectionStatus === 'disconnected'
-                  ? 'Disconnected'
-                  : connectionStatus === 'error'
-                  ? 'Connection Error'
-                  : 'Not Connected'}
+                    ? 'Pending Setup'
+                    : connectionStatus === 'disconnected'
+                      ? 'Disconnected'
+                      : connectionStatus === 'error'
+                        ? 'Connection Error'
+                        : 'Not Connected'}
               </span>
             )}
           </div>

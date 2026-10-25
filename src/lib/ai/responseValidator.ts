@@ -410,7 +410,7 @@ export function validateCustomerResponse(params: {
 
   // 4. Fabricated / Unsupported Commercial Price Detection
   // Commercial values may ONLY appear if backed by verified company knowledge or explicit current company instruction.
-  // Customer statements and previous AI responses NEVER establish company policy.
+  // Referencing the customer's stated budget in consultative context is permitted unless the customer was asking for a price quotation and the AI fabricated a quote.
   let hasFabricatedPrice = false;
   const priceMatches = trimmedReply.match(PRICE_AMOUNT_PATTERN);
   if (priceMatches) {
@@ -422,7 +422,12 @@ export function validateCustomerResponse(params: {
       updatedOverrides,
     });
 
-    if (!isSupportedByAuthority) {
+    const isCustomerProvidedBudget =
+      !clientAskedPrice &&
+      (clientMessage.toLowerCase().includes(rawPriceMatch.toLowerCase()) ||
+        Boolean(knownRequirements?.budget && knownRequirements.budget.toLowerCase().includes(rawPriceMatch.toLowerCase())));
+
+    if (!isSupportedByAuthority && !isCustomerProvidedBudget) {
       hasFabricatedPrice = true;
       if (clientAskedPrice) {
         issues.push('Fabricated price figure detected when client asked for price quotation.');
@@ -438,13 +443,19 @@ export function validateCustomerResponse(params: {
   let hasFabricatedTimeline = false;
   const timelineMatches = trimmedReply.match(TIMELINE_PROMISE_PATTERN);
   if (timelineMatches) {
-    const isTimelineSupported = isValueInAuthoritativeSources(timelineMatches[0], {
+    const rawTimeline = timelineMatches[0];
+    const isTimelineSupported = isValueInAuthoritativeSources(rawTimeline, {
       companyContext,
       companyKnowledge,
       companyInstruction,
       updatedOverrides,
     });
-    if (!isTimelineSupported) {
+
+    const isCustomerProvidedTimeline =
+      clientMessage.toLowerCase().includes(rawTimeline.toLowerCase()) ||
+      Boolean(knownRequirements?.timeline && knownRequirements.timeline.toLowerCase().includes(rawTimeline.toLowerCase()));
+
+    if (!isTimelineSupported && !isCustomerProvidedTimeline) {
       hasFabricatedTimeline = true;
       issues.push('Fabricated specific timeline duration promised without client requirements confirmed.');
     }
