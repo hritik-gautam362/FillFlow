@@ -25,6 +25,33 @@ export interface CurrentTurnRequirement {
   description: string;
 }
 
+/**
+ * Strict semantic validator for timeline requirements.
+ * Rejects conversational non-timeline phrases (e.g., "in working", "with your team", "online", "flexible")
+ * and only accepts genuine durations, calendar months, quarters, or specific deadlines.
+ */
+export function isValidTimelineValue(val: unknown): boolean {
+  if (typeof val !== 'string') return false;
+  const s = val.trim().toLowerCase();
+  if (!s || s.length < 3 || s.length > 80) return false;
+
+  // Explicit non-timeline reject list (phrases mistakenly captured as timelines)
+  if (/^(?:in working|working|with your team|online|team|asap|urgent|immediately|soon|flexible|tbd|none|n\/a|yes|no)$/i.test(s)) {
+    return false;
+  }
+  if (/\b(?:interested in working|working with your team|with our team|for our clothing|browse products|place orders|online orders)\b/i.test(s)) {
+    return false;
+  }
+
+  // Must match recognizable duration or calendar target:
+  const hasDuration = /\b\d+\s*(?:–|-|\s*to\s*)?\s*\d*\s*(?:weeks?|months?|days?|business\s+days?|working\s+days?)\b/i.test(s);
+  const hasCalendarPeriod = /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|monday|tuesday|wednesday|thursday|friday)\b/i.test(s);
+  const hasYear = /\b202[4-9]\b/.test(s);
+  const hasTimePrefix = /\b(?:by|within|in|before|target|deadline|launch\s+by|complete\s+by)\b/i.test(s);
+
+  return hasDuration || hasCalendarPeriod || (hasTimePrefix && (hasYear || /\d+/.test(s)));
+}
+
 export interface CustomerFacts {
   businessType?: string;
   projectType?: string;
@@ -80,7 +107,7 @@ export function buildStructuredConversationContext(params: {
   subject?: string;
 }): StructuredConversationContext {
   const {
-    history,
+    history = [],
     latestMessage,
     previousRequirements = {},
     companyContext,
@@ -111,7 +138,9 @@ export function buildStructuredConversationContext(params: {
   if (previousRequirements.businessType) facts.businessType = previousRequirements.businessType;
   if (previousRequirements.projectType) facts.projectType = previousRequirements.projectType;
   if (previousRequirements.budget) facts.budget = previousRequirements.budget;
-  if (previousRequirements.timeline) facts.timeline = previousRequirements.timeline;
+  if (previousRequirements.timeline && isValidTimelineValue(previousRequirements.timeline)) {
+    facts.timeline = previousRequirements.timeline.trim();
+  }
   if (previousRequirements.productCount) facts.productCount = previousRequirements.productCount;
   if (previousRequirements.paymentGateway) facts.paymentRequirements = previousRequirements.paymentGateway;
   if (previousRequirements.checkoutPreference) facts.checkoutPreference = previousRequirements.checkoutPreference;
@@ -203,16 +232,39 @@ export function buildStructuredConversationContext(params: {
     }
 
     // Timeline extraction & updates
-    const timelineUpdate = sanitizedText.match(
-      /\b(?:push(?:ed)?\s+(?:the\s+)?(?:target\s+)?launch\s+to|moved?\s+(?:to|to\s+launch\s+in)|launch\s+(?:in|by|before)|ready\s+by|complete\s+by|deadline\s+(?:is|by))\s+([a-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+(?:\s+\d{4})?|\d+\s+(?:weeks?|months?|days?))\b/i
+    const MONTH_OR_DAY_REGEX_PART =
+      '(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|monday|tuesday|wednesday|thursday|friday|saturday|sunday)';
+    const TIME_SPAN_PART =
+      '\\d+(?:\\s*(?:–|-|\\s*to\\s*)\\s*\\d+)?\\s*(?:weeks?|months?|days?|business\\s+days?|working\\s+days?)';
+
+    // 1. Explicit timeline label: e.g. "Timeline: 6–8 weeks", "Target launch: May 2026", "Deadline: Friday"
+    const explicitTimelineMatch = sanitizedText.match(
+      new RegExp(
+        `\\b(?:timeline|timeframe|turnaround|deadline|target\\s+launch|launch\\s+date|target\\s+completion|delivery\\s+timeline)\\s*[:=-]?\\s*(${TIME_SPAN_PART}|(?:before|by|in|within|end\\s+of)\\s+[a-z0-9\\s,]+|${MONTH_OR_DAY_REGEX_PART}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s*,\\s*\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH_OR_DAY_REGEX_PART}(?:\\s+\\d{4})?|q[1-4](?:\\s+\\d{4})?|${MONTH_OR_DAY_REGEX_PART}(?:\\s+\\d{4})?)\\b`,
+        'i'
+      )
     );
-    if (timelineUpdate && timelineUpdate[1]) {
+
+    // 2. Timeline modification phrase: e.g. "pushed launch to May", "complete by Friday"
+    const timelineUpdate = sanitizedText.match(
+      new RegExp(
+        `\\b(?:push(?:ed)?\\s+(?:the\\s+)?(?:target\\s+)?launch\\s+to|moved?\\s+(?:to|to\\s+launch\\s+in)|launch\\s+(?:in|by|before)|ready\\s+by|complete\\s+by|deadline\\s+(?:is|by))\\s+(${MONTH_OR_DAY_REGEX_PART}\\s+\\d{1,2}(?:st|nd|rd|th)?|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH_OR_DAY_REGEX_PART}|${MONTH_OR_DAY_REGEX_PART}(?:\\s+\\d{4})?|${TIME_SPAN_PART})\\b`,
+        'i'
+      )
+    );
+
+    if (explicitTimelineMatch && explicitTimelineMatch[1] && isValidTimelineValue(explicitTimelineMatch[1])) {
+      facts.timeline = explicitTimelineMatch[1].trim();
+    } else if (timelineUpdate && timelineUpdate[1] && isValidTimelineValue(timelineUpdate[1])) {
       facts.timeline = `by ${timelineUpdate[1].trim()}`;
     } else if (!facts.timeline) {
       const timelineMatch = sanitizedText.match(
-        /\b(?:before|by|in|within)\s+(?:(?:\d+\s+(?:weeks?|months?|days?))|[a-z]+\s+\d{1,2}(?:st|nd|rd|th)?(?:\s*,\s*\d{4})?|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+(?:\s+\d{4})?|q[1-4]|end\s+of\s+[a-z]+|[a-z]+(?:\s+\d{4})?)\b/i
+        new RegExp(
+          `\\b(?:before|by|in|within)\\s+(?:${TIME_SPAN_PART}|${MONTH_OR_DAY_REGEX_PART}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s*,\\s*\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+${MONTH_OR_DAY_REGEX_PART}(?:\\s+\\d{4})?|q[1-4](?:\\s+\\d{4})?|end\\s+of\\s+(?:${MONTH_OR_DAY_REGEX_PART}|this\\s+year|next\\s+year|q[1-4])|${MONTH_OR_DAY_REGEX_PART}(?:\\s+\\d{4})?)\\b`,
+          'i'
+        )
       );
-      if (timelineMatch) {
+      if (timelineMatch && isValidTimelineValue(timelineMatch[0])) {
         facts.timeline = timelineMatch[0].trim();
       }
     }
@@ -231,8 +283,11 @@ export function buildStructuredConversationContext(params: {
     }
     if (prodCountMatch) {
       addFeature(`${prodCountMatch[1]} products catalog`);
-    } else if (/\bproducts?\s+catalog|product\s+pages?\b/i.test(lower)) {
-      addFeature('product catalog');
+    } else if (/\b(?:products?\s+catalog|product\s+pages?|product\s+browsing|browse\s+products?)\b/i.test(lower)) {
+      addFeature('product browsing and catalog');
+    }
+    if (/\b(?:online\s+ordering|order\s+online|place\s+orders?)\b/i.test(lower)) {
+      addFeature('online ordering');
     }
     if (/\b(?:customer\s+login|user\s+accounts?|client\s+portal|sign\s*in|login)\b/i.test(lower)) {
       addFeature('customer login');
@@ -252,8 +307,22 @@ export function buildStructuredConversationContext(params: {
     if (/\b(?:hubspot|lead\s+routing|crm\s+integration|automated\s+lead\s+routing)\b/i.test(lower)) {
       addFeature('HubSpot and automated lead routing');
     }
-    if (/\b(?:dashboard\s+link|customer\s+portal\s+dashboard|api\s+documentation)\b/i.test(lower)) {
+    if (/\b(?:admin\s+dashboard|management\s+dashboard|analytics\s+dashboard|custom\s+admin\s+dashboard)\b/i.test(lower)) {
+      addFeature('admin dashboard');
+    } else if (/\b(?:dashboard\s+link|customer\s+portal\s+dashboard|api\s+documentation)\b/i.test(lower)) {
       addFeature('customer portal dashboard');
+    }
+    if (/\b(?:contact\s+forms?|inquiry\s+forms?)\b/i.test(lower)) {
+      addFeature('contact form');
+    }
+    if (/\b(?:testimonials?|client\s+testimonials?|reviews?)\b/i.test(lower)) {
+      addFeature('testimonials');
+    }
+    if (/\b(?:service\s+pages?|services\s+section)\b/i.test(lower)) {
+      addFeature('service pages');
+    }
+    if (/\b(?:homepage|landing\s+page)\b/i.test(lower)) {
+      addFeature('homepage');
     }
 
     // Explicit payment provider selections outside placeholders

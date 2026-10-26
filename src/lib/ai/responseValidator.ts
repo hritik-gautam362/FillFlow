@@ -39,8 +39,8 @@ const GENERIC_CANNED_PATTERNS = [
   /we specialize in [^.?!]+(?:\.|\s)+could you share what you're looking to accomplish/i,
 ];
 
-// Currency amount patterns (e.g. $15,000, ₹5,00,000, 20,000 USD, 5 lakh)
-const PRICE_AMOUNT_PATTERN = /(?:\$|€|£|₹|Rs\.?|INR|USD)\s*[\d,]+(?:\.\d+)?|\b\d+(?:,\d+)*(?:\s*(?:lakh|crore|k|thousand|million))\s*(?:rupees|inr|usd|dollars)?\b/i;
+// Currency amount patterns (e.g. $15,000, ₹5,00,000, 20,000 USD, 5 lakh, ₹2.5 lakh)
+const PRICE_AMOUNT_PATTERN = /(?:\$|€|£|₹|Rs\.?|INR|USD)\s*[\d,]+(?:\.\d+)?(?:\s*(?:lakh|crore|k|thousand|million))?|\b\d+(?:,\d+)*(?:\s*(?:lakh|crore|k|thousand|million))\s*(?:rupees|inr|usd|dollars)?\b/i;
 
 // Specific deadline / completion duration promises (e.g. "will be ready in 3 weeks", "will take 2 months", "will require 10 days")
 const TIMELINE_PROMISE_PATTERN = /\b(?:(?:will|should|can)\s+(?:take|require|be\s+ready\s+in|be\s+completed\s+in)|completed\s+in|delivered\s+in|ready\s+in)\s+\d+\s+(?:days?|weeks?|months?)\b/i;
@@ -422,10 +422,17 @@ export function validateCustomerResponse(params: {
       updatedOverrides,
     });
 
+    const cleanNum = rawPriceMatch.replace(/[₹$€£,\s]/g, '').toLowerCase();
+    const cleanClientMsg = clientMessage.replace(/[₹$€£,\s]/g, '').toLowerCase();
+    const cleanKnownBudget = (knownRequirements?.budget || '').replace(/[₹$€£,\s]/g, '').toLowerCase();
+    const numericPart = rawPriceMatch.replace(/[^\d.]/g, '');
+
+    // Check if the customer explicitly provided this price/budget figure in their message or requirements
     const isCustomerProvidedBudget =
-      !clientAskedPrice &&
-      (clientMessage.toLowerCase().includes(rawPriceMatch.toLowerCase()) ||
-        Boolean(knownRequirements?.budget && knownRequirements.budget.toLowerCase().includes(rawPriceMatch.toLowerCase())));
+      clientMessage.toLowerCase().includes(rawPriceMatch.toLowerCase()) ||
+      (cleanNum.length >= 2 && (cleanClientMsg.includes(cleanNum) || cleanKnownBudget.includes(cleanNum))) ||
+      (numericPart.length >= 2 && (cleanClientMsg.includes(numericPart) || cleanKnownBudget.includes(numericPart))) ||
+      Boolean(knownRequirements?.budget && knownRequirements.budget.toLowerCase().includes(rawPriceMatch.toLowerCase()));
 
     if (!isSupportedByAuthority && !isCustomerProvidedBudget) {
       hasFabricatedPrice = true;
@@ -459,6 +466,20 @@ export function validateCustomerResponse(params: {
       hasFabricatedTimeline = true;
       issues.push('Fabricated specific timeline duration promised without client requirements confirmed.');
     }
+  }
+
+  // False Timeline Attribution Check: Reply claims customer outlined/shared timeline when customer provided none
+  const claimsCustomerGaveTimeline =
+    /\b(?:thanks\s+for\s+(?:outlining|sharing|providing)\s+(?:your\s+)?(?:timeline|delivery\s+timeline|target\s+deadline|deadline|schedule)|noted\s+your\s+timeline\s+requirements)\b/i.test(lowerReply);
+
+  const customerActuallyProvidedTimeline =
+    Boolean(knownRequirements?.timeline && knownRequirements.timeline.trim().length > 0) ||
+    /\b(?:\d+\s*(?:–|-|\s*to\s*)\s*\d*\s*(?:weeks?|months?|days?)|january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|friday|monday)\b/i.test(lowerClientMsg);
+
+  if (claimsCustomerGaveTimeline && !customerActuallyProvidedTimeline) {
+    hasFabricatedTimeline = true;
+    isGeneric = true;
+    issues.push('False timeline claim: Reply states customer outlined or provided timeline requirements, but no timeline was provided.');
   }
 
   // 6. Repeated Question Detection

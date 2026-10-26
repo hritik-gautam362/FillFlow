@@ -139,25 +139,73 @@ export function generateDraftVariations(
     restrictedTopics.includes('unapproved_guarantee') ||
     /\b(?:guarantee\s+this\s+will\s+be\s+completed|guarantee\s+delivery|guaranteed)\b/i.test(lower)
   ) {
-    draftProfessional =
-      `Hi,\n\n` +
-      `Thank you for outlining your delivery timeline. While we recognize the importance of your schedule, firm delivery dates ` +
-      `and completion guarantees require a technical scope review and engineering resource confirmation by our team.\n\n` +
-      `We are evaluating the required deliverables with our engineering team and will follow up shortly with verified scheduling options.\n\n` +
-      `Best regards,\n${companyName}`;
+    if (baseDraft && baseDraft.trim().length > 0) {
+      const cleanBase = baseDraft.trim();
+      draftProfessional = cleanBase.startsWith('Hi') || cleanBase.startsWith('Hello') || cleanBase.startsWith('Dear')
+        ? cleanBase
+        : `Hi,\n\n${cleanBase}\n\nBest regards,\n${companyName}`;
 
-    draftRelationship =
-      `Hi,\n\n` +
-      `Thanks for sharing your target deadline with us. We understand how crucial this timeline is for your launch, and we want ` +
-      `to make sure we set realistic milestones that we can reliably deliver.\n\n` +
-      `Our team is currently reviewing the resource schedule, and I will be back in touch shortly with confirmed options.\n\n` +
-      `Best regards,\n${companyName}`;
+      const bodyText = cleanBase
+        .replace(/^(?:Hi|Hello|Dear)[^\n]*\n+/i, '')
+        .replace(/\n+(?:Best regards|Regards|Sincerely|Thanks)[^\n]*$/i, '')
+        .trim();
 
-    draftConcise =
-      `Hi,\n\n` +
-      `Thanks for sharing your timeline requirements. Our team is reviewing the project scope to determine feasibility before confirming delivery dates.\n\n` +
-      `We will follow up with verified scheduling options shortly.\n\n` +
-      `Best regards,\n${companyName}`;
+      draftRelationship =
+        `Hi,\n\n` +
+        `Thanks so much for reaching out to ${companyName}! We really appreciate you considering us for your project.\n\n` +
+        `${bodyText}\n\n` +
+        `Best regards,\n${companyName}`;
+
+      draftConcise =
+        `Hi,\n\n` +
+        `${bodyText}\n\n` +
+        `Best regards,\n${companyName}`;
+    } else {
+      const customerMentionedTimeline =
+        /\b(?:\d+\s*(?:–|-|\s*to\s*)?\s*\d*\s*(?:weeks?|months?|days?)|deadline|target\s+launch|launch\s+by|complete\s+by|timeline|turnaround|january|february|march|april|may|june|july|august|september|october|november|december|q[1-4]|friday|monday)\b/i.test(lower);
+
+      if (customerMentionedTimeline) {
+        draftProfessional =
+          `Hi,\n\n` +
+          `Thank you for outlining your delivery timeline. While we recognize the importance of your schedule, firm delivery dates ` +
+          `and completion guarantees require a technical scope review and engineering resource confirmation by our team.\n\n` +
+          `We are evaluating the required deliverables with our engineering team and will follow up shortly with verified scheduling options.\n\n` +
+          `Best regards,\n${companyName}`;
+
+        draftRelationship =
+          `Hi,\n\n` +
+          `Thanks for sharing your target deadline with us. We understand how crucial this timeline is for your launch, and we want ` +
+          `to make sure we set realistic milestones that we can reliably deliver.\n\n` +
+          `Our team is currently reviewing the resource schedule, and I will be back in touch shortly with confirmed options.\n\n` +
+          `Best regards,\n${companyName}`;
+
+        draftConcise =
+          `Hi,\n\n` +
+          `Thanks for sharing your timeline requirements. Our team is reviewing the project scope to determine feasibility before confirming delivery dates.\n\n` +
+          `We will follow up with verified scheduling options shortly.\n\n` +
+          `Best regards,\n${companyName}`;
+      } else {
+        draftProfessional =
+          `Hi,\n\n` +
+          `Thank you for reaching out to ${companyName}. We have received your project details and our team is currently reviewing ` +
+          `the scope and technical requirements.\n\n` +
+          `We will follow up with you shortly with our recommended next steps.\n\n` +
+          `Best regards,\n${companyName}`;
+
+        draftRelationship =
+          `Hi,\n\n` +
+          `Thanks so much for reaching out to ${companyName}! We really appreciate you considering us for your project.\n\n` +
+          `I have shared your requirements with our team so we can review the scope and provide you with an accurate, thoughtful proposal. ` +
+          `We will follow up with you shortly.\n\n` +
+          `Best regards,\n${companyName}`;
+
+        draftConcise =
+          `Hi,\n\n` +
+          `Thanks for contacting ${companyName}. We have received your request and our team is currently reviewing the scope.\n\n` +
+          `We will follow up with you shortly.\n\n` +
+          `Best regards,\n${companyName}`;
+      }
+    }
   }
   // ---------------------------------------------------------------------------
   // 4. GENERAL / COMMISSION / COMMERCIAL POLICY
@@ -233,26 +281,27 @@ export function generateDraftVariations(
   // 5. DEFAULT BASE DRAFT DERIVATION
   // ---------------------------------------------------------------------------
   else {
-    const coreMessage = baseDraft && baseDraft.trim().length > 0
-      ? baseDraft.trim()
+    const hasBaseDraft = Boolean(baseDraft && baseDraft.trim().length > 0);
+    const coreMessage = hasBaseDraft
+      ? baseDraft!.trim()
       : `Thanks for sharing these details. I have forwarded your request to our team for confirmation, and I'll get back to you shortly as soon as we have reviewed it.`;
 
-    draftProfessional = coreMessage.startsWith('Hi')
+    const bodyText = coreMessage
+      .replace(/^(?:Hi|Hello|Dear)[^\n]*\n+/i, '')
+      .replace(/\n+(?:Best regards|Regards|Sincerely|Thanks)[^\n]*$/i, '')
+      .trim();
+
+    draftProfessional = coreMessage.startsWith('Hi') || coreMessage.startsWith('Hello') || coreMessage.startsWith('Dear')
       ? coreMessage
       : `Hi,\n\n${coreMessage}\n\nBest regards,\n${companyName}`;
 
-    draftRelationship =
-      `Hi,\n\n` +
-      `Thanks so much for reaching out to ${companyName}! We really appreciate you considering us for your project.\n\n` +
-      `I have shared your requirements with our team so we can review the scope and provide you with an accurate, thoughtful proposal. ` +
-      `We will follow up with you shortly.\n\n` +
-      `Best regards,\n${companyName}`;
+    draftRelationship = hasBaseDraft
+      ? `Hi,\n\nThanks so much for reaching out to ${companyName}! We really appreciate you considering us for your project.\n\n${bodyText}\n\nBest regards,\n${companyName}`
+      : `Hi,\n\nThanks so much for reaching out to ${companyName}! We really appreciate you considering us for your project.\n\nI have shared your requirements with our team so we can review the scope and provide you with an accurate, thoughtful proposal. We will follow up with you shortly.\n\nBest regards,\n${companyName}`;
 
-    draftConcise =
-      `Hi,\n\n` +
-      `Thanks for contacting ${companyName}. We have received your request and our team is currently reviewing the details.\n\n` +
-      `We will follow up with you shortly.\n\n` +
-      `Best regards,\n${companyName}`;
+    draftConcise = hasBaseDraft
+      ? `Hi,\n\n${bodyText}\n\nBest regards,\n${companyName}`
+      : `Hi,\n\nThanks for contacting ${companyName}. We have received your request and our team is currently reviewing the details.\n\nWe will follow up with you shortly.\n\nBest regards,\n${companyName}`;
   }
 
   // Authoritative Commercial Claims Sanitization:

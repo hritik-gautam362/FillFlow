@@ -1320,6 +1320,21 @@ export async function approveAndSendItem(
 
     await saveApprovalItem(item);
 
+    console.log('[DIAGNOSTIC_DATA_FLOW]', JSON.stringify({
+      flowStage: 'APPROVED_OUTBOUND_SENT',
+      approvalItemId: item.id,
+      gmailMessageId: item.inboundMessageId,
+      gmailThreadId: item.gmailThreadId || null,
+      companyId,
+      subject: item.subject,
+      parsedBodySnippet: item.latestCustomerMessage.substring(0, 120),
+      sentDraftSnippet: textToSend.substring(0, 140),
+      wasEdited,
+      approvedBy: options?.userEmail || 'company_user',
+      outboundSent: true,
+      outboundMessageId: sendResult.providerMessageId,
+    }));
+
     // 9. LOG AGENT CHAT MESSAGE ON LEAD RECORD (safe check if lead exists)
     try {
       if (item.leadId) {

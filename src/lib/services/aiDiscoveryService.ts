@@ -142,9 +142,15 @@ export async function processDiscoveryMessage(
     subject: subjectStr,
   });
 
+  const explicitSignoffMatch = trimmedMessage.match(/(?:thanks|regards|sincerely|cheers|best|warm\s+regards),?\s*\n+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+  const activeSenderName =
+    (providerMetadata?.senderName && typeof providerMetadata.senderName === 'string' && !providerMetadata.senderName.includes('@'))
+      ? (providerMetadata.senderName as string).trim()
+      : (explicitSignoffMatch && explicitSignoffMatch[1] ? explicitSignoffMatch[1].trim() : leadRecord?.clientName);
+
   const previousRequirements: Partial<ExtractedRequirements> = (isEmail && !isEmailSameThread)
     ? {
-        ...(leadRecord?.clientName ? { clientName: leadRecord.clientName } : {}),
+        ...(activeSenderName ? { clientName: activeSenderName } : {}),
         ...(leadRecord?.email ? { email: leadRecord.email } : {}),
         ...(leadRecord?.phone ? { phone: leadRecord.phone } : {}),
       }

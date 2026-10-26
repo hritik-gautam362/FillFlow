@@ -7,7 +7,7 @@ import {
   CompanyKnowledgeItem,
 } from './permissionTypes';
 import { CompanyContext } from './types';
-import { StructuredConversationContext } from './conversationMemory';
+import { StructuredConversationContext, isValidTimelineValue } from './conversationMemory';
 import {
   DEFAULT_TOPIC_POLICIES,
   normalizePermissionConfig,
@@ -445,15 +445,22 @@ export function evaluatePermissionAndRisk(
     reasons.push('Customer requested non-standard deferred payment or custom milestone terms.');
   }
 
-  // K. Delivery Deadlines
-  const hasDeliveryDeadline =
+  // K. Delivery Deadlines & Guarantees
+  const isFirmDeliveryGuarantee =
     DELIVERY_DEADLINE_PATTERNS.some((p) => p.test(lower)) ||
-    /\b(?:complete\s+(?:the\s+project\s+)?within\s+\d+|timeline\s+(?:is|of)?\s*\d+|within\s+\d+\s*(?:–|-|\s*to\s*)?\s*\d*\s*(?:weeks?|months?|days?))\b/i.test(lower) ||
-    Boolean(structuredContext?.facts?.timeline);
+    /\b(?:guarantee\s+(?:delivery|this\s+will\s+be\s+completed|completion|launch)|guaranteed\s+(?:delivery|completion)|penalty\s+for\s+delay)\b/i.test(lower);
 
-  if (hasDeliveryDeadline) {
+  const hasDeliveryDeadline =
+    isFirmDeliveryGuarantee ||
+    /\b(?:complete\s+(?:the\s+project\s+)?within\s+\d+|timeline\s+(?:is|of)?\s*\d+|within\s+\d+\s*(?:–|-|\s*to\s*)?\s*\d*\s*(?:weeks?|months?|days?))\b/i.test(lower) ||
+    Boolean(structuredContext?.facts?.timeline && isValidTimelineValue(structuredContext.facts.timeline));
+
+  if (isFirmDeliveryGuarantee) {
     restrictedTopics.push('delivery_deadline_guarantee');
-    reasons.push('Customer requested a firm delivery deadline, specified a timeline, or completion schedule.');
+    reasons.push('Customer requested a firm delivery deadline or completion guarantee.');
+  } else if (hasDeliveryDeadline) {
+    restrictedTopics.push('delivery_timelines');
+    reasons.push('Customer specified a timeline or project schedule requirement.');
   }
 
   // L. SLAs

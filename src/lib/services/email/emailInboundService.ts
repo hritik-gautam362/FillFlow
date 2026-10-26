@@ -283,6 +283,7 @@ export async function tryAcquireEmailMessageLease(
           "metadata" IS NULL
           OR ("metadata"::jsonb)->'processedEmailIds' IS NULL
           OR ("metadata"::jsonb)->'processedEmailIds'->${messageId} IS NULL
+          OR (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'status') IN ('processed_no_reply', 'error')
           OR (
             (("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'status') = 'in_flight'
             AND COALESCE((("metadata"::jsonb)->'processedEmailIds'->${messageId}->>'lockedAt')::bigint, 0) < ${leaseCutoff}
@@ -306,11 +307,22 @@ export async function tryAcquireEmailMessageLease(
     const meta = (conn.metadata as Record<string, unknown>) || {};
     const processedMap = (meta.processedEmailIds as Record<string, unknown>) || {};
     const entry = processedMap[messageId] as { status?: string; lockedAt?: number } | undefined;
-    if (entry?.status === 'processed' || entry?.status === 'replied') {
+    if (entry?.status === 'replied' || entry?.status === 'skipped_irrelevant') {
       return { acquired: false, reason: 'ALREADY_PROCESSED' };
     }
+    if (entry?.status === 'processed') {
+      const approvalQueue = (meta.approvalQueue as Record<string, { inboundMessageId?: string }>) || {};
+      const isQueued = Object.values(approvalQueue).some(
+        (item) => item && item.inboundMessageId === messageId
+      );
+      if (isQueued) {
+        return { acquired: false, reason: 'ALREADY_PROCESSED' };
+      }
+    }
     if (entry?.status === 'in_flight') {
-      return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
+      if (typeof entry.lockedAt === 'number' && now - entry.lockedAt < 90_000) {
+        return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
+      }
     }
     return { acquired: false, reason: 'IN_FLIGHT_LEASE_ACTIVE' };
   } catch (sqlErr) {
@@ -327,8 +339,17 @@ export async function tryAcquireEmailMessageLease(
       const processedMap = (currentMeta.processedEmailIds as Record<string, unknown>) || {};
       const existing = processedMap[messageId] as { status?: string; lockedAt?: number } | undefined;
 
-      if (existing?.status === 'processed' || existing?.status === 'replied') {
+      if (existing?.status === 'replied' || existing?.status === 'skipped_irrelevant') {
         return { acquired: false, reason: 'ALREADY_PROCESSED' };
+      }
+      if (existing?.status === 'processed') {
+        const approvalQueue = (currentMeta.approvalQueue as Record<string, { inboundMessageId?: string }>) || {};
+        const isQueued = Object.values(approvalQueue).some(
+          (item) => item && item.inboundMessageId === messageId
+        );
+        if (isQueued) {
+          return { acquired: false, reason: 'ALREADY_PROCESSED' };
+        }
       }
       if (existing?.status === 'in_flight' && typeof existing.lockedAt === 'number') {
         if (now - existing.lockedAt < 90_000) {
@@ -609,22 +630,40 @@ export async function isMessageAlreadyProcessed(
 
       if (entry) {
         if (typeof entry === 'object' && entry !== null) {
-          if (entry.status === 'processed' || entry.status === 'replied') {
+          // Outbound email was delivered to customer
+          if (entry.status === 'replied') {
             completedEmailMessageIds.add(gmailMsgId);
             completedEmailMessageIds.add(emailMsgId);
             return true;
           }
+          // Explicitly and legitimately filtered (spam, promo, newsletter)
+          if (entry.status === 'skipped_irrelevant') {
+            completedEmailMessageIds.add(gmailMsgId);
+            completedEmailMessageIds.add(emailMsgId);
+            return true;
+          }
+          // If marked processed, verify whether an approval item exists or if it was an active queued inquiry
+          if (entry.status === 'processed') {
+            const approvalQueue = (meta.approvalQueue as Record<string, { inboundMessageId?: string }>) || {};
+            const isQueued = Object.values(approvalQueue).some(
+              (item) => item && (item.inboundMessageId === gmailMsgId || item.inboundMessageId === emailMsgId)
+            );
+            if (isQueued) {
+              completedEmailMessageIds.add(gmailMsgId);
+              completedEmailMessageIds.add(emailMsgId);
+              return true;
+            }
+          }
+          // Active in-flight lease within 90 seconds
           if (entry.status === 'in_flight') {
             const isRecent = typeof entry.lockedAt === 'number' && Date.now() - entry.lockedAt < 90_000;
             if (isRecent) {
               return true;
             }
-          } else {
-            completedEmailMessageIds.add(gmailMsgId);
-            completedEmailMessageIds.add(emailMsgId);
-            return true;
           }
-        } else {
+          // Note: status 'processed_no_reply', 'error', or unfulfilled 'processed' without a queued draft
+          // represents an incomplete or failed processing attempt, allowing recovery.
+        } else if (entry === true) {
           completedEmailMessageIds.add(gmailMsgId);
           completedEmailMessageIds.add(emailMsgId);
           return true;
@@ -1496,10 +1535,22 @@ export async function processInboundEmail(
       qualificationScore: 0,
     });
   } else {
+    // Check if new thread has a specific client name
+    const explicitSignoffMatch = inbound.text.match(/(?:thanks|regards|sincerely|cheers|best|warm\s+regards),?\s*\n+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
+    const newNameCandidate = (inbound.senderName && !inbound.senderName.includes('@') && inbound.senderName.trim().length > 1)
+      ? inbound.senderName.trim()
+      : (explicitSignoffMatch && explicitSignoffMatch[1] ? explicitSignoffMatch[1].trim() : undefined);
+
+    const updateData: Record<string, unknown> = { lastActive: new Date() };
+    if (!isSameThread && newNameCandidate && newNameCandidate !== lead.clientName) {
+      updateData.clientName = newNameCandidate;
+      lead.clientName = newNameCandidate;
+    }
+
     // Update lastActive timestamp on existing Lead
     await prisma.lead.update({
       where: { id: lead.id },
-      data: { lastActive: new Date() },
+      data: updateData,
     });
   }
 
@@ -1582,6 +1633,7 @@ export async function processInboundEmail(
           channel: 'email',
           subject: inbound.subject,
           sender: inbound.sender,
+          senderName: inbound.senderName,
           recipient: inbound.recipient,
           inReplyTo: inbound.inReplyTo,
           references: inbound.references,
@@ -1677,18 +1729,18 @@ export async function processInboundEmail(
   // -------------------------------------------------------------------------
   // 10. CONVERSATIONAL STATE & COURTESY CLOSING GUARD (PHASE 3)
   // -------------------------------------------------------------------------
-  // If no reply is required (courtesy closing, NO_RESPONSE_NEEDED, or validation failed/review needed)
+  const validationHasIssues = Boolean(discoveryResult.validationResult && !discoveryResult.validationResult.isValid);
+
+  // If no reply is required (courtesy closing, NO_RESPONSE_NEEDED) — never drop legitimate inquiries with validation issues!
   if (
-    discoveryResult.requiresReply === false ||
-    !discoveryResult.reply ||
-    discoveryResult.reply.trim() === '' ||
-    discoveryResult.conversationState === 'NO_RESPONSE_NEEDED' ||
-    (discoveryResult.validationResult && !discoveryResult.validationResult.isValid)
+    !validationHasIssues &&
+    (discoveryResult.requiresReply === false ||
+      !discoveryResult.reply ||
+      discoveryResult.reply.trim() === '' ||
+      discoveryResult.conversationState === 'NO_RESPONSE_NEEDED')
   ) {
     const reason =
-      discoveryResult.validationResult && !discoveryResult.validationResult.isValid
-        ? `VALIDATION_FAILED: ${discoveryResult.validationResult.issues.join(', ')}`
-        : discoveryResult.conversationState === 'NO_RESPONSE_NEEDED'
+      discoveryResult.conversationState === 'NO_RESPONSE_NEEDED'
         ? 'NO_RESPONSE_NEEDED'
         : 'NO_REPLY_REQUIRED';
 
@@ -1891,16 +1943,47 @@ export async function processInboundEmail(
   // -------------------------------------------------------------------------
   const permEval = discoveryResult.permissionEvaluation;
   const requiresApproval =
-    permEval &&
-    (permEval.decision === 'NEEDS_APPROVAL' ||
-      permEval.decision === 'BLOCKED' ||
-      permEval.requiresCompanyApproval);
+    validationHasIssues ||
+    Boolean(
+      permEval &&
+        (permEval.decision === 'NEEDS_APPROVAL' ||
+          permEval.decision === 'BLOCKED' ||
+          permEval.requiresCompanyApproval)
+    );
 
-  if (requiresApproval && permEval) {
-    const holdingText = permEval.customerHoldingResponse;
+  if (requiresApproval) {
+    const effectivePermEval = permEval ? { ...permEval, reasons: [...permEval.reasons] } : {
+      decision: 'NEEDS_APPROVAL' as const,
+      riskLevel: 'HIGH' as const,
+      reasons: ['Draft requires human review before dispatch.'],
+      suggestedAction: 'REQUEST_APPROVAL',
+      restrictedTopics: [] as string[],
+      requiresCompanyApproval: true,
+      customerHoldingResponse: undefined,
+    };
+
+    if (validationHasIssues && discoveryResult.validationResult) {
+      for (const issue of discoveryResult.validationResult.issues) {
+        if (!effectivePermEval.reasons.includes(issue)) {
+          effectivePermEval.reasons.push(issue);
+        }
+      }
+    }
+
+    const holdingText = effectivePermEval.customerHoldingResponse;
     let holdingSendResult: { success: boolean; providerMessageId?: string; error?: string } = { success: false };
 
-    if (holdingText && holdingText.trim().length > 0) {
+    // In accordance with safety policies, never automatically send a generic holding fallback to client project inquiries.
+    // Holding responses are only dispatched for explicit leadership escalations (e.g. commission proposals, commercial equity, unapproved guarantees, or blocked decisions).
+    const shouldSendHoldingResponse =
+      Boolean(holdingText && holdingText.trim().length > 0) &&
+      (effectivePermEval.decision === 'BLOCKED' ||
+        effectivePermEval.suggestedAction === 'ESCALATE_TO_LEADERSHIP_AND_SEND_HOLDING_RESPONSE' ||
+        effectivePermEval.restrictedTopics.some((t) =>
+          ['commission_revenue_share', 'commercial_equity', 'unapproved_guarantee', 'legal_contractual_commitment'].includes(t)
+        ));
+
+    if (shouldSendHoldingResponse && holdingText && holdingText.trim().length > 0) {
       const formattedHoldingHtml = generateEmailReplyHtml({
         leadName: lead && 'clientName' in lead ? (lead.clientName as string) : 'Valued Client',
         replyText: holdingText,
@@ -1982,14 +2065,14 @@ export async function processInboundEmail(
         createdAt: h.createdAt,
       })) || [],
       intent: classificationResult.intent || 'unknown',
-      riskLevel: permEval.riskLevel,
-      permissionDecision: permEval.decision,
-      restrictedTopics: permEval.restrictedTopics,
-      whyApprovalRequired: permEval.reasons,
+      riskLevel: effectivePermEval.riskLevel,
+      permissionDecision: effectivePermEval.decision,
+      restrictedTopics: effectivePermEval.restrictedTopics,
+      whyApprovalRequired: effectivePermEval.reasons,
       currentTurnRequirements: discoveryResult.structuredContext?.currentTurnRequirements || [],
-      commercialTermsDetected: permEval.restrictedTopics || [],
+      commercialTermsDetected: effectivePermEval.restrictedTopics || [],
       updatedOverrides: overridesList,
-      customerHoldingResponse: holdingText,
+      customerHoldingResponse: shouldSendHoldingResponse ? holdingText : undefined,
       holdingResponseSent: holdingSendResult.success,
       holdingOutboundMessageId: holdingSendResult.providerMessageId,
       baseDraft: discoveryResult.reply,
@@ -2006,11 +2089,41 @@ export async function processInboundEmail(
     await releaseEmailQuota(companyId, gmailMsgId, 'HELD_FOR_APPROVAL');
     quotaSettled = true;
 
-    completedEmailMessageIds.add(gmailMsgId);
-    completedEmailMessageIds.add(rawMsgId);
+    // Only add to completed cache if an actual outbound holding message was sent to the recipient.
+    // If holding response was NOT sent, keep completed cache clear so approveAndSendItem() can deliver the approved draft.
+    if (holdingSendResult.success) {
+      completedEmailMessageIds.add(gmailMsgId);
+      completedEmailMessageIds.add(rawMsgId);
+    }
     inFlightEmailMessageIds.delete(gmailMsgId);
     inFlightEmailMessageIds.delete(rawMsgId);
     await recordEmailMessageStatusInConnection(companyId, gmailMsgId, 'processed', { sender: inbound.sender });
+
+    console.log('[DIAGNOSTIC_DATA_FLOW]', JSON.stringify({
+      flowStage: 'APPROVAL_QUEUED',
+      gmailMessageId: gmailMsgId,
+      gmailThreadId: gmailThreadId || null,
+      companyId,
+      subject: inbound.subject,
+      parsedBodySnippet: inbound.text.substring(0, 120),
+      extractedRequirements: {
+        projectType: discoveryResult.extractedRequirements?.projectType,
+        budget: discoveryResult.extractedRequirements?.budget,
+        timeline: discoveryResult.extractedRequirements?.timeline,
+        features: discoveryResult.extractedRequirements?.features || [],
+      },
+      aiModelInput: {
+        intent: classificationResult.intent,
+        subject: inbound.subject,
+        historyCount: threadContext?.priorMessages?.length || 0,
+      },
+      aiModelOutputSnippet: discoveryResult.reply.substring(0, 140),
+      persistedDraftSnippet: approvalItem.currentDraft.substring(0, 140),
+      approvalQueueItemId: approvalItem.id,
+      approvalRequired: true,
+      holdingResponseSent: holdingSendResult.success,
+      outboundSent: false,
+    }));
 
     logEmailAutomationEvent({
       gmailMessageId: gmailMsgId,
@@ -2020,7 +2133,7 @@ export async function processInboundEmail(
       classification: classificationType,
       intent: classificationResult.intent,
       confidence: classificationResult.confidence,
-      reason: 'Approval required: ' + permEval.reasons.join('; '),
+      reason: 'Approval required: ' + (effectivePermEval?.reasons?.join('; ') || 'Draft requires human review before dispatch.'),
       processingStatus: 'needs_approval',
       aiCalled: true,
       quotaReserved: false,
@@ -2181,6 +2294,33 @@ export async function processInboundEmail(
   inFlightEmailMessageIds.delete(gmailMsgId);
   inFlightEmailMessageIds.delete(rawMsgId);
   await recordEmailMessageStatusInConnection(companyId, gmailMsgId, 'processed', { sender: inbound.sender });
+
+  console.log('[DIAGNOSTIC_DATA_FLOW]', JSON.stringify({
+    flowStage: 'OUTBOUND_REPLY_SENT',
+    gmailMessageId: gmailMsgId,
+    gmailThreadId: gmailThreadId || null,
+    companyId,
+    subject: inbound.subject,
+    parsedBodySnippet: inbound.text.substring(0, 120),
+    extractedRequirements: {
+      projectType: discoveryResult.extractedRequirements?.projectType,
+      budget: discoveryResult.extractedRequirements?.budget,
+      timeline: discoveryResult.extractedRequirements?.timeline,
+      features: discoveryResult.extractedRequirements?.features || [],
+    },
+    aiModelInput: {
+      intent: classificationResult.intent,
+      subject: inbound.subject,
+      historyCount: threadContext?.priorMessages?.length || 0,
+    },
+    aiModelOutputSnippet: discoveryResult.reply.substring(0, 140),
+    persistedDraftSnippet: discoveryResult.reply.substring(0, 140),
+    approvalQueueItemId: null,
+    approvalRequired: false,
+    holdingResponseSent: false,
+    outboundSent: sendResult.success,
+    outboundMessageId: sendResult.providerMessageId,
+  }));
 
   // Mark message as read in Gmail so Sync Inbox does not repeatedly process it
   if (activeProvider.markAsRead && gmailMsgId) {

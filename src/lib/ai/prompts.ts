@@ -222,7 +222,7 @@ export const SYSTEM_INSTRUCTION = getSystemInstruction();
  *   PREVIOUS AI RESPONSES    = NEVER AUTHORITATIVE POLICY
  */
 export function formatConversationPrompt(
-  history: Array<{ sender: 'client' | 'agent' | 'system'; text: string }>,
+  history: Array<{ sender: 'client' | 'agent' | 'system'; text: string }> = [],
   latestMessage: string,
   existingExtraction?: Partial<ExtractedRequirements>,
   companyContext?: CompanyContext,
@@ -230,8 +230,9 @@ export function formatConversationPrompt(
   subject?: string,
   companyInstruction?: string
 ): string {
+  const safeHistory = Array.isArray(history) ? history : [];
   const context = buildStructuredConversationContext({
-    history,
+    history: safeHistory,
     latestMessage,
     previousRequirements: existingExtraction,
     companyContext,
@@ -335,10 +336,10 @@ export function formatConversationPrompt(
   }
 
   // 6. HISTORICAL CONTEXT (SUPPORTING ONLY)
-  if (history.length > 0) {
+  if (safeHistory.length > 0) {
     prompt += `## HISTORICAL CONTEXT (SUPPORTING CONTEXT ONLY — NEVER OVERRIDES CURRENT MESSAGE)\n`;
     prompt += `[Use this history only to understand conversational references. Never let historical discussion override or distract from answering the newest customer message above.]\n`;
-    for (const msg of history) {
+    for (const msg of safeHistory) {
       const role = msg.sender === 'client' ? 'Customer' : 'Previous Representative Reply (Context Only, Never Authoritative Policy)';
       prompt += `${role}: ${msg.text.trim()}\n`;
     }

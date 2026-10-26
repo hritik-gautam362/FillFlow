@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FillFlow - Product Demo Script & Gmail Connection Architecture</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm 10mm 10mm 10mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #0f172a;
+      background-color: #ffffff;
+      line-height: 1.38;
+      font-size: 11px;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Header Banner */
+    .header-banner {
+      background: linear-gradient(135deg, #090d16 0%, #1e1b4b 55%, #312e81 100%);
+      color: #ffffff;
+      padding: 14px 18px;
+      border-radius: 9px;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.25);
+      border: 1px solid rgba(165, 180, 252, 0.4);
+      color: #c7d2fe;
+      padding: 2px 7px;
+      border-radius: 12px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0 0 3px 0;
+      letter-spacing: -0.3px;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      color: #94a3b8;
+      margin: 0;
+      font-weight: 500;
+    }
+
+    .meta-bar {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #cbd5e1;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+      border-bottom: 1.5px solid #cbd5e1;
+      padding-bottom: 3px;
+      margin-top: 10px;
+      margin-bottom: 6px;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 5px 0;
+      color: #334155;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 5px 0 8px 0;
+      font-size: 10.5px;
+      page-break-inside: avoid;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: left;
+      padding: 5px 7px;
+      border: 1px solid #cbd5e1;
+    }
+
+    td {
+      padding: 5px 7px;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+      color: #334155;
+    }
+
+    tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+
+    /* Script Act Cards */
+    .act-card {
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      border-radius: 7px;
+      padding: 7px 10px;
+      margin-bottom: 7px;
+      page-break-inside: avoid;
+    }
+
+    .act-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      padding-bottom: 2px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .act-title {
+      font-weight: 800;
+      font-size: 11.5px;
+      color: #1e1b4b;
+    }
+
+    .act-time {
+      background: #e0e7ff;
+      color: #4338ca;
+      padding: 1px 5px;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .cue-box {
+      background: #f8fafc;
+      border-left: 3px solid #6366f1;
+      padding: 4px 7px;
+      border-radius: 0 4px 4px 0;
+      font-size: 10px;
+      color: #475569;
+      margin-bottom: 4px;
+    }
+
+    .cue-box strong {
+      color: #0f172a;
+    }
+
+    .spoken-box {
+      background: #faf5ff;
+      border-left: 3px solid #9333ea;
+      padding: 6px 9px;
+      border-radius: 0 4px 4px 0;
+      font-size: 10.5px;
+      color: #4c1d95;
+      font-style: italic;
+      line-height: 1.4;
+    }
+
+    .spoken-box strong {
+      color: #3b0764;
+      font-style: normal;
+    }
+
+    /* Architecture Block */
+    .tech-box {
+      background: #090d16;
+      color: #f8fafc;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 8.8px;
+      line-height: 1.35;
+      margin: 6px 0;
+      white-space: pre-wrap;
+      border: 1px solid #1e293b;
+      page-break-inside: avoid;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin: 6px 0;
+      page-break-inside: avoid;
+    }
+
+    .feature-tile {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-size: 10.2px;
+      line-height: 1.35;
+    }
+
+    .feature-tile strong {
+      display: block;
+      color: #0f172a;
+      margin-bottom: 2px;
+      font-size: 10.5px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Banner -->
+  <div class="header-banner">
+    <div class="badge">FillFlow Autonomous Platform</div>
+    <h1>FillFlow: Complete Demo Script & Gmail Architecture</h1>
+    <div class="subtitle">Official Presentation Walkthrough, Feature Guide & Technical Pipeline</div>
+    <div class="meta-bar">
+      <span><strong>Platform:</strong> FillFlow AI Agent (Multi-Channel)</span>
+      <span><strong>Engines:</strong> Gmail API • Google Pub/Sub • Gemini AI</span>
+      <span><strong>Format:</strong> Executive Pitch & Technical Demo</span>
+    </div>
+  </div>
+
+  <h2>1. Platform Feature Matrix</h2>
+  <p>FillFlow converts corporate email inboxes and web channels into autonomous, 24/7 lead qualification and pipeline generation engines.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 24%;">Module</th>
+        <th style="width: 46%;">Core Capabilities</th>
+        <th style="width: 30%;">Business Benefit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Gmail Automation</strong></td>
+        <td>1-Click OAuth 2.0, Real-time Cloud Pub/Sub push webhooks, Gmail Watch API, RFC In-Reply-To thread tracking, fast memory deduplication.</td>
+        <td>Sub-second lead response time; eliminates polling lag and duplicate replies.</td>
+      </tr>
+      <tr>
+        <td><strong>Gemini AI Intelligence</strong></td>
+        <td>Multi-turn discovery dialogue, knowledge base grounding, intent classification (Inquiry, Follow-up, Pricing, Support), budget & timeline extraction.</td>
+        <td>Conversational replies that read like a seasoned human consultant.</td>
+      </tr>
+      <tr>
+        <td><strong>AI Governance & Safety</strong></td>
+        <td>3 Autonomy Modes (Autonomous, Semi-Autonomous, Safe Limited). Granular toggles for pricing, SLAs, refunds, and custom restricted keywords.</td>
+        <td>Eliminates hallucination risks & unauthorized financial commitments.</td>
+      </tr>
+      <tr>
+        <td><strong>Project Brief Synthesis</strong></td>
+        <td>Auto-generates structured briefs: technical stack, key risks, timeline brackets, and feature breakdown scored by complexity (Low/Med/High).</td>
+        <td>Reps enter sales calls with the architecture and requirements already defined.</td>
+      </tr>
+      <tr>
+        <td><strong>CRM Pipeline & Quotas</strong></td>
+        <td>Automatic Lead progression (<code>new</code> &rarr; <code>qualifying</code> &rarr; <code>qualified</code> &rarr; <code>brief_ready</code> &rarr; <code>converted</code>), 1-click Excel export, credit auto-locks.</td>
+        <td>Turnkey CRM workflow with strict operational budget controls.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>2. Five-Minute Presentation Script (Acts 1 &ndash; 6)</h2>
+
+  <div class="act-card">
+    <div class="act-header">
+      <span class="act-title">Act 1: The Inbound Lead Bottleneck & Solution</span>
+      <span class="act-time">0:00 &ndash; 0:45</span>
+    </div>
+    <div class="cue-box">
+      <strong>Screen Action:</strong> Open FillFlow Dashboard (<code>/dashboard</code>). Highlight active lead counters, pipeline stages, and real-time activity metrics.
+    </div>
+    <div class="spoken-box">
+      <strong>Voiceover:</strong> "Every business loses high-value leads simply because incoming inquiries sit in an inbox for hours or days. Sales reps spend half their week manually qualifying leads, triaging spam, and typing the same repetitive answers.<br><br>
+      Meet <strong>FillFlow</strong> &mdash; an autonomous AI agent built to live directly inside your existing business channels. It connects to your Google Workspace with a single click, detects incoming leads in real time, conducts intelligent multi-turn discovery conversations, and delivers fully structured project briefs before a human rep even opens the inbox."
+    </div>
+  </div>
+
+  <div class="act-card">
+    <div class="act-header">
+      <span class="act-title">Act 2: The Gmail Connection & 1-Click Integration</span>
+      <span class="act-time">0:45 &ndash; 1:45</span>
+    </div>
+    <div class="cue-box">
+      <strong>Screen Action:</strong> Navigate to <strong>Dashboard &rarr; Automations &rarr; Email</strong>. Select the Google tab and click <strong>"Connect Google Workspace / Gmail"</strong>. Show the OAuth authorization modal and the instant 'Connected' badge with quota indicators.
+    </div>
+    <div class="spoken-box">
+      <strong>Voiceover:</strong> "Connecting your inbox takes less than 30 seconds. On the Email Automation tab, we click <strong>Connect with Google</strong>.<br><br>
+      We adhere strictly to the principle of least privilege: we only request permissions to read incoming client messages and send replies within authorized conversation threads.<br><br>
+      The moment authorization completes, FillFlow registers a Google Cloud Pub/Sub webhook using the official <strong>Gmail Watch API</strong>. That means zero polling delays &mdash; the exact millisecond a customer emails you, Google sends a secure push notification directly to our server."
+    </div>
+  </div>
+
+  <div class="act-card">
+    <div class="act-header">
+      <span class="act-title">Act 3: Live Inbound Flow & Multi-Turn Intelligence</span>
+      <span class="act-time">1:45 &ndash; 3:00</span>
+    </div>
+    <div class="cue-box">
+      <strong>Screen Action:</strong> Split-screen view: Send a realistic client inquiry email to the connected company inbox (e.g., <em>"We need an on-demand logistics web platform, budget $20,000, target launch by Q3. What tech stack do you recommend?"</em>). Switch to FillFlow dashboard to show the lead created in real-time, then show the AI's professional reply in the sender's inbox.
+    </div>
+    <div class="spoken-box">
+      <strong>Voiceover:</strong> "Let's watch this live. A prospective client emails asking for an on-demand logistics platform with a $20,000 budget. Instantly, FillFlow's inbound engine validates the email, creates a new Lead profile, extracts budget and timeline, and consults the company's verified Knowledge Base.<br><br>
+      It then dispatches a context-rich reply addressing the technology recommendations and asking the next crucial qualification question. Notice how FillFlow preserves RFC <code>In-Reply-To</code> and <code>References</code> headers, keeping the entire email chain consolidated in one neat thread inside Gmail."
+    </div>
+  </div>
+
+  <div class="act-card">
+    <div class="act-header">
+      <span class="act-title">Act 4: AI Governance, Topic Guardrails & Approval Queue</span>
+      <span class="act-time">3:00 &ndash; 4:00</span>
+    </div>
+    <div class="cue-box">
+      <strong>Screen Action:</strong> Open <strong>Settings &rarr; AI Control Center</strong>. Show topic toggles (Services = Active, Custom Pricing = Restricted, SLA = Restricted). Show a message routed to the <strong>Approval Queue</strong> with editable response cards.
+    </div>
+    <div class="spoken-box">
+      <strong>Voiceover:</strong> "The number one concern enterprises have with AI is loss of control: 'What if the AI promises an unauthorized discount or misquotes contract terms?'<br><br>
+      FillFlow solves this with a granular <strong>AI Permission Engine</strong>. You control autonomy topic by topic: General questions and capabilities are automated, while sensitive topics like pricing, custom discounts, and legal SLAs are automatically intercepted. When a lead asks for custom contractual terms, FillFlow either sends an approved holding response or drafts a proposed reply directly into the <strong>Approval Queue</strong> for your team to review, edit, and send with one click."
+    </div>
+  </div>
+
+  <div class="act-card">
+    <div class="act-header">
+      <span class="act-title">Act 5 & 6: Automated Project Brief, CRM & Closing</span>
+      <span class="act-time">4:00 &ndash; 5:00</span>
+    </div>
+    <div class="cue-box">
+      <strong>Screen Action:</strong> Click into the Lead Detail view. Display the synthesized <strong>Project Brief</strong> with feature complexity badges (Low/Medium/High) and click <strong>"Export to Excel"</strong>.
+    </div>
+    <div class="spoken-box">
+      <strong>Voiceover:</strong> "Once the lead completes discovery, FillFlow automatically synthesizes a full <strong>Project Brief</strong>. It categorizes each required feature by complexity, assesses architecture risks, estimates budget compatibility, and marks the lead as <code>brief_ready</code>.<br><br>
+      Your sales reps can download the entire pipeline into Excel and enter discovery calls 100% prepared. FillFlow converts your inbox into an automated, 24/7 revenue engine: zero missed inquiries, instant response times, and bulletproof safety controls."
+    </div>
+  </div>
+
+  <h2>3. Technical Gmail Connection Architecture</h2>
+  <p>The entire email pipeline is event-driven, token-resilient, and fortified against duplicates and infinite loops.</p>
+
+  <div class="tech-box">
+┌────────────────────┐          ┌──────────────────────┐          ┌─────────────────────────┐
+│ Prospective Client │ ───────▶ │     Gmail Server     │ ───────▶ │ Google Cloud Pub/Sub    │
+│ (Sends Inquiry)    │          │  (Real-time Event)   │          │ (Topic: gmail-inbound)  │
+└────────────────────┘          └──────────────────────┘          └────────────┬────────────┘
+                                                                               │ Push Webhook
+                                                                               ▼
+┌───────────────────────────────────────────────────────────────────────────────────────────┐
+│ FillFlow Core Inbound Service (/api/webhooks/google/pubsub & emailInboundService.ts)      │
+│ 1. Validate Bearer Token   2. In-Flight Mutex Lock   3. Gmail History Delta Synchronization│
+└──────────────────────────────────────────────┬────────────────────────────────────────────┘
+                                               │
+                        ┌──────────────────────┴──────────────────────┐
+                        ▼                                             ▼
+          ┌───────────────────────────┐                 ┌───────────────────────────┐
+          │   Smart Dedup & Filter    │                 │   Permission & Guardrails │
+          │ - In-Memory Cache (2,000) │                 │ - Check Autonomy Mode     │
+          │ - Match RFC Message-ID    │                 │ - Topic Safety Toggles    │
+          │ - Loop & Spam Elimination │                 │ - Quota Reserve & Commit  │
+          └─────────────┬─────────────┘                 └─────────────┬─────────────┘
+                                               │
+                                               ▼
+                                 ┌───────────────────────────┐
+                                 │   Google Gemini 1.5/2.0   │
+                                 │ - Verified Knowledge Base │
+                                 │ - Multi-Turn Continuity   │
+                                 │ - Project Brief Engine    │
+                                 └─────────────┬─────────────┘
+                                               │
+                        ┌──────────────────────┴──────────────────────┐
+                        ▼                                             ▼
+          ┌───────────────────────────┐                 ┌───────────────────────────┐
+          │ Autonomous Outbound Send  │                 │ Semi-Autonomous Hold/Edit │
+          │ Gmail API (/messages/send)│                 │ Routed to Approval Queue  │
+          └───────────────────────────┘                 └───────────────────────────┘
+  </div>
+
+  <h2>4. Core Engineering Deep-Dive</h2>
+
+  <div class="grid-2">
+    <div class="feature-tile">
+      <strong>1. Zero-Polling Real-Time Gmail Watch</strong>
+      <span>Leverages Google Cloud Pub/Sub with the official <code>users.watch</code> API in <code>googlePubSubWebhookService.ts</code>. Eliminates polling delays, battery drain, and rate-limit hits.</span>
+    </div>
+    <div class="feature-tile">
+      <strong>2. Token Resiliency & Auto-Rotation</strong>
+      <span>In <code>GoogleProvider.ts</code>, access tokens are checked on every request. If within 60 seconds of expiration, the provider transparently rotates using the offline refresh token.</span>
+    </div>
+    <div class="feature-tile">
+      <strong>3. Anti-Loop & Idempotency Armor</strong>
+      <span>Dual-tier caching (in-memory LRU cache of 2,000 IDs + PostgreSQL snapshot comparison). Self-originating emails are immediately dropped to prevent infinite loops.</span>
+    </div>
+    <div class="feature-tile">
+      <strong>4. RFC Thread Preservation</strong>
+      <span>Inbound Gmail <code>threadId</code> and RFC headers (<code>Message-ID</code>, <code>In-Reply-To</code>, <code>References</code>) are tracked end-to-end so outbound replies stay grouped in the client's inbox.</span>
+    </div>
+  </div>
+
+  <h2>5. Quick Live CLI Verification</h2>
+  <p>To demonstrate the end-to-end pipeline in a live technical evaluation, execute the test scripts below:</p>
+  <div class="tech-box">
+# Runs full multi-turn Gmail + Gemini discovery pipeline locally in seconds:
+npx tsx scripts/test-real-gemini-live-e2e.ts
+
+# Runs regression and safety guardrail verification:
+npx tsx scripts/run-post-remediation-smoke-test.ts
+  </div>
+
+</body>
+</html>

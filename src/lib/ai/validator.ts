@@ -1,7 +1,9 @@
 import { ExtractedRequirements, AiModelOutput, ConversationState, CompanyContext } from './types';
 import { calculateQualificationScore, computeMissingFields } from './scoring';
 import { sanitizeTextForFactExtraction } from './placeholderDetector';
-import { buildStructuredConversationContext } from './conversationMemory';
+import { buildStructuredConversationContext, isValidTimelineValue } from './conversationMemory';
+
+export { isValidTimelineValue };
 
 export const EMPTY_REQUIREMENTS: ExtractedRequirements = {
   clientName: '',
@@ -104,6 +106,9 @@ export function generateContextualFallback(
     ...EMPTY_REQUIREMENTS,
     ...(previousRequirements || {}),
   };
+  if (!isValidTimelineValue(baseReq.timeline)) {
+    baseReq.timeline = '';
+  }
 
   const companyName = companyContext?.name?.trim() || 'our company';
   const companyIndustry = companyContext?.industry?.trim();
@@ -756,7 +761,9 @@ export function validateAndNormalizeModelOutput(
     features: mergeStringArray(rawReq.features, prev.features || []),
     techStack: mergeStringArray(rawReq.techStack, prev.techStack || []),
     budget: cleanString(rawReq.budget, prev.budget || ''),
-    timeline: cleanString(rawReq.timeline, prev.timeline || ''),
+    timeline: isValidTimelineValue(rawReq.timeline)
+      ? cleanString(rawReq.timeline)
+      : (isValidTimelineValue(prev.timeline) ? cleanString(prev.timeline) : ''),
     integrations: mergeStringArray(rawReq.integrations, prev.integrations || []),
     securityRequirements: mergeStringArray(rawReq.securityRequirements, prev.securityRequirements || []),
     constraints: mergeStringArray(rawReq.constraints, prev.constraints || []),
@@ -782,7 +789,7 @@ export function validateAndNormalizeModelOutput(
       normalized.budget = explicitBudgetUpdate[1].replace(/[,;.]+$/, '').trim();
     }
     const explicitTimelineUpdate = sanitizedText.match(/\b(?:launch|ready|complete|deadline|timeline)\s+(?:by|in|before)\s+([a-z]+\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+(?:\s+\d{4})?|\d+\s+(?:weeks?|months?|days?))/i);
-    if (explicitTimelineUpdate && explicitTimelineUpdate[0]) {
+    if (explicitTimelineUpdate && explicitTimelineUpdate[0] && isValidTimelineValue(explicitTimelineUpdate[0])) {
       normalized.timeline = explicitTimelineUpdate[0].trim();
     }
     const prodMatch = sanitizedText.match(/(?:around|approximately|~)?\s*(\d+)\s+products?/i);

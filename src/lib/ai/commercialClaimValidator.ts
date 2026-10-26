@@ -16,6 +16,7 @@ export interface AuthoritativeCommercialContext {
   >;
   restrictedTopics?: string[];
   isCompanyEdited?: boolean;
+  allowedCustomerBudgetTokens?: string[];
 }
 
 export type CommercialClaimType =
@@ -101,8 +102,10 @@ function normalizeAmountToken(val: string): string {
  * 2. Explicit current company instruction (`companyInstruction`)
  * 3. Verified company context (`pricingPolicy`, `services`, `description`)
  * 4. Company overrides (`updatedOverrides`)
+ * 5. Customer-provided budget tokens (`allowedCustomerBudgetTokens`)
  *
- * NOTE: Customer statements and previous AI responses NEVER establish company policy.
+ * NOTE: Customer statements and previous AI responses NEVER establish company policy,
+ * but reflecting a customer's own stated budget in consultative dialogue is permitted.
  */
 export function isValueInAuthoritativeSources(
   rawClaim: string,
@@ -153,6 +156,16 @@ export function isValueInAuthoritativeSources(
     if (combinedContext.includes(claimLower)) return true;
     const normCC = normalizeAmountToken(combinedContext);
     if (normCC.includes(normalizedClaim)) return true;
+  }
+
+  // 5. Check Customer-Stated Budget / Inquiry Tokens (when customer specifically provided their budget)
+  if (context.allowedCustomerBudgetTokens && context.allowedCustomerBudgetTokens.length > 0) {
+    for (const token of context.allowedCustomerBudgetTokens) {
+      const normToken = normalizeAmountToken(token);
+      if (normToken === normalizedClaim || normToken.includes(normalizedClaim) || normalizedClaim.includes(normToken)) {
+        return true;
+      }
+    }
   }
 
   return false;
@@ -368,14 +381,39 @@ export function sanitizeCommercialClaimsInDraft(
 ): string {
   if (!draft || draft.trim().length === 0) return draft;
 
-  const validation = validateCommercialClaims(draft, context);
+  // Extract customer-stated budget / amount tokens from customerMessage
+  const customerAmounts: string[] = [];
+  if (customerMessage) {
+    const rawMatches = customerMessage.match(STANDALONE_CURRENCY_REGEX) || [];
+    for (const rm of rawMatches) {
+      const norm = normalizeAmountToken(rm);
+      if (norm) customerAmounts.push(norm);
+    }
+    const numMatches = customerMessage.match(/\b\d+(?:,\d+)*(?:\.\d+)?\b/g) || [];
+    for (const nm of numMatches) {
+      const norm = normalizeAmountToken(nm);
+      if (norm && norm.length >= 3) customerAmounts.push(norm);
+    }
+  }
+
+  // Merge customer-stated amounts into effective context so reflecting them is recognized as supported
+  const effectiveContext: AuthoritativeCommercialContext = {
+    ...context,
+    allowedCustomerBudgetTokens: [
+      ...(context?.allowedCustomerBudgetTokens || []),
+      ...customerAmounts,
+    ],
+  };
+
+  const validation = validateCommercialClaims(draft, effectiveContext);
   if (validation.isValid) {
-    return draft; // All claims are backed by verified sources
+    return draft; // All claims are backed by verified sources or customer-stated budget
   }
 
   let sanitized = draft;
 
-  const hasUnsupportedPrice = validation.unsupportedClaims.some((c) => c.type === 'price');
+  const unsupportedPriceClaims = validation.unsupportedClaims.filter((c) => c.type === 'price');
+  const hasUnsupportedPrice = unsupportedPriceClaims.length > 0;
   const hasUnsupportedCommission = validation.unsupportedClaims.some(
     (c) => c.type === 'commission' || c.type === 'revenue_share' || c.type === 'equity'
   );
@@ -390,14 +428,14 @@ export function sanitizeCommercialClaimsInDraft(
 
   // Case 1: Invented pricing detected (e.g. "our pricing typically ranges around ₹1,20,000")
   if (hasUnsupportedPrice) {
-    // Replace whole sentences containing invented pricing with consultative response
-    const pricingSentenceRegex =
-      /[^.?!;\n]*?(?:our\s+pricing|pricing\s+typically|typically\s+ranges|ranges\s+around|starts\s+at|[₹$€£]\s*[\d,]+|\b\d+(?:,\d+)*(?:\s*(?:lakh|crore))\b)[^.?!;\n]*[.?!;\n]?/gi;
-
-    sanitized = sanitized.replace(
-      pricingSentenceRegex,
-      "We'd be happy to prepare a detailed quotation for you. Could you share any additional requirements or your preferred timeline so we can provide an accurate estimate?\n\n"
-    );
+    for (const claim of unsupportedPriceClaims) {
+      const escaped = claim.rawText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sentenceRegex = new RegExp(`[^.?!;\\n]*?${escaped}[^.?!;\\n]*[.?!;\\n]?`, 'gi');
+      sanitized = sanitized.replace(
+        sentenceRegex,
+        "We'd be happy to prepare a detailed quotation for you. Could you share any additional requirements or your preferred timeline so we can provide an accurate estimate?\n\n"
+      );
+    }
   }
 
   // Case 2: Invented commission / revenue share
@@ -444,7 +482,7 @@ export function sanitizeCommercialClaimsInDraft(
   }
 
   // Strip any lingering raw currency amounts that remain unsupported
-  const remainingUnsupported = validateCommercialClaims(sanitized, context);
+  const remainingUnsupported = validateCommercialClaims(sanitized, effectiveContext);
   if (!remainingUnsupported.isValid) {
     for (const claim of remainingUnsupported.unsupportedClaims) {
       if (claim.type === 'price') {
